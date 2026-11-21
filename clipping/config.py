@@ -679,6 +679,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Volume of the original video audio while the voice-over is talking (0.3 = 30%%).",
     )
     vo_group.add_argument(
+        "--no-library",
+        action="store_true",
+        default=False,
+        help="Leave finished clips in outputs/ instead of sorting them into 'My Clips/<date - title>/' "
+             "(Videos, Thumbnails, Captions, Voice-overs, Upload details).",
+    )
+    vo_group.add_argument(
+        "--library-dir",
+        default=None,
+        help="Where the 'My Clips' folders go (default: a 'My Clips' folder next to main.py).",
+    )
+    vo_group.add_argument(
         "--voiceover-mode",
         choices=["overlay", "intro"],
         default="overlay",
@@ -811,7 +823,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         base_dir=base_dir,
         outputs_dir=outputs_dir,
         font_dir=font_dir,
-        file_video_asli=os.path.abspath(os.path.join(base_dir, "video_asli.mp4")),
+        # The downloaded source video lives in outputs/ with the other working files.
+        file_video_asli=os.path.join(outputs_dir, "video_asli.mp4"),
         file_font_thumbnail=os.path.abspath(
             os.path.join(base_dir, NAMA_FONT_THUMBNAIL)
         ),
@@ -934,6 +947,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         voiceover_volume=args.voiceover_volume,
         original_volume=args.original_volume,
         voiceover_mode=args.voiceover_mode,
+        organize_library=not args.no_library,
+        library_dir=os.path.abspath(args.library_dir) if args.library_dir else None,
         voiceover_offset=args.voiceover_offset,
         edge_glow=args.edge_glow,
         edge_glow_mode=args.edge_glow_mode,
