@@ -60,6 +60,7 @@ crop_center_broll = broll.crop_center_broll
 subtitles = _load_studio_internal_module("subtitles.py", "clipping_studio_subtitles")
 vo_overlay_mod = _load_studio_internal_module("voiceover_overlay.py", "clipping_studio_voiceover_overlay")
 captions_mod = _load_studio_internal_module("captions_export.py", "clipping_studio_captions_export")
+reactions_mod = _load_studio_internal_module("reactions.py", "clipping_studio_reactions")
 buat_file_ass = subtitles.buat_file_ass
 effects = _load_studio_internal_module("effects.py", "clipping_studio_effects")
 siapkan_glitch_video = effects.siapkan_glitch_video
@@ -805,6 +806,67 @@ def proses_klip(
                     out_path=mixed_ts,
                 )
                 os.replace(mixed_ts, target_ts)
+
+        # REACTION CLIPS — pause the clip for ~1s, play a pre-saved reaction
+        # (laugh, shock...), then carry on from exactly where it stopped.
+        reaction_plan = []
+        if (
+            getattr(cfg, "reactions_enabled", True)
+            and clip.get("reaction_inserts")
+            and os.path.exists(m_ts)
+        ):
+            moods = reactions_mod.list_moods(getattr(cfg, "reactions_dir", None))
+            reaction_plan = reactions_mod.plan_inserts(
+                clip.get("reaction_inserts"),
+                moods,
+                m_start=m_start,
+                m_end=m_end,
+                keep_segments=keep_segments if use_segments else None,
+                clip_duration=vo_overlay_mod.clip_output_duration(
+                    m_start, m_end, keep_segments if use_segments else None
+                ),
+                avoid_window=vo_overlay["window"] if vo_overlay else None,
+                max_count=int(getattr(cfg, "max_reactions", 2)),
+                seed=rank,
+            )
+        if reaction_plan:
+            render_stage = "reactions"
+            print(
+                "   😂 [Reactions] Cutting in "
+                + ", ".join(f"{p['mood']} at {p['at']:.1f}s" for p in reaction_plan)
+                + "..."
+            )
+            reaction_targets = [m_ts] + ([m_ts_dev] if dev_dual else [])
+            done_reactions = []
+            for target_ts in reaction_targets:
+                if not os.path.exists(target_ts):
+                    continue
+                spliced_ts = target_ts + ".react.ts"
+                done_here = reactions_mod.splice(
+                    target_ts,
+                    reaction_plan,
+                    max_seconds=float(getattr(cfg, "reaction_seconds", 1.2)),
+                    volume=float(getattr(cfg, "reaction_volume", 1.0)),
+                    encode_args=std_p,
+                    out_path=spliced_ts,
+                )
+                if done_here:
+                    os.replace(spliced_ts, target_ts)
+                    if target_ts == m_ts:
+                        done_reactions = done_here
+            if done_reactions:
+                manifest_item["reactions"] = [
+                    {"at": d["at"], "mood": d["mood"], "file": os.path.basename(d["path"]),
+                     "duration": d["duration"]}
+                    for d in done_reactions
+                ]
+                manifest_item["caption_lines"] = reactions_mod.shift_caption_lines(
+                    manifest_item.get("caption_lines") or [], done_reactions
+                )
+                manifest_item["main_duration"] = round(
+                    float(manifest_item.get("main_duration") or 0)
+                    + sum(d["duration"] for d in done_reactions), 3
+                )
 
         # VOICE-OVER INTRO GENERATION (intro mode: freeze frame + equalizer)
         render_stage = "voiceover"

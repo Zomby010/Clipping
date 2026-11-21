@@ -294,6 +294,25 @@
             "end_time"
           ]
         }
+      },
+      "reaction_inserts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "time": {
+              "type": "number"
+            },
+            "mood": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "time",
+            "mood"
+          ]
+        }
       }
     },
     "required": [
@@ -319,7 +338,8 @@
       "alasan",
       "klasifikasi_akun",
       "hook_v2",
-      "keep_segments"
+      "keep_segments",
+      "reaction_inserts"
     ]
   }
 }

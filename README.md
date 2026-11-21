@@ -461,6 +461,18 @@ python main.py --url "VIDEO_URL" --voiceover --voiceover-lang id --voiceover-voi
 - `--edge-glow`: Apply the ambient edge glow effect to the **entire** video, instead of just the voice-over intro.
 - `--edge-glow-mode`: Edge glow strategy (`default`, `smooth` [default], or `full`). `smooth` mathematically adjusts speed to remove stuttering in loops.
 
+## 😂 Reaction Clips
+
+Cut a short pre-saved reaction (a laugh, a gasp, a "let's go!") into a funny or shocking moment. The clip pauses, the reaction plays for about a second with its own sound, then the clip carries on from exactly where it stopped.
+
+1. Put short clips in `assets/reactions/<mood>/`, for example `assets/reactions/laugh/laugh1.mp4`. Starter folders: `laugh`, `shock`, `hype`, `sad`, `cringe`. Any new folder name becomes a mood.
+2. Run as usual. The AI sees which moods have clips and marks the best moments (`reaction_inserts` in the clip plan).
+3. Reactions never land while the narrator talks, in the first or last 1.5 seconds, or closer than 4 seconds to each other. Captions in the `.srt` move along with them.
+
+Options: `--max-reactions` (default 2 per Short), `--reaction-seconds` (default 1.2, longer files are cut), `--reaction-volume` (default 1.0), `--reactions-dir`, `--no-reactions`.
+
+Use clips you made yourself or ones that are free to reuse.
+
 ## 🎵 BGM (Background Music) Settings
 
 - `--no-bgm` : Disable the BGM feature entirely.

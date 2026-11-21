@@ -126,6 +126,7 @@ def clip():
         "start_time": 10, "end_time": 40, "viral_score": 80,
         "hook_start_time": 10, "hook_end_time": 13,
         "keep_segments": [{"start_time": 10, "end_time": 40}],
+        "reaction_inserts": [],
         "broll_list": [], "hook_v2": {"enabled": False, "items": []},
     }
 

@@ -62,6 +62,7 @@ def clip():
         },
         "hook_v2": {"enabled": False, "items": [], "transition": {"type": "glitch"}},
         "keep_segments": [{"start_time": 10, "end_time": 40}],
+        "reaction_inserts": [],
     }
 
 

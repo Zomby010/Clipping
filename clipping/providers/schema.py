@@ -8,6 +8,7 @@ _GEMINI_FIELDS = [
     "title_indonesia", "title_inggris", "hastag",
     "description_hook", "description_context", "keyword_tags", "tiktok_title_id",
     "tiktok_caption_id", "tiktok_caption", "klasifikasi_akun", "hook_v2", "keep_segments",
+    "reaction_inserts",
 ]
 
 
@@ -150,13 +151,25 @@ def build_clips_schema(accounts: dict) -> dict:
                         "required": ["start_time", "end_time"],
                     },
                 },
+                "reaction_inserts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "time": {"type": "number"},
+                            "mood": {"type": "string"},
+                        },
+                        "required": ["time", "mood"],
+                    },
+                },
             },
             "required": [
                 "rank", "viral_score", "start_time", "end_time", "hook_start_time", "hook_end_time",
                 "bgm_mood", "typography_plan", "broll_list", "recommended_visual_broll_hook", "title_indonesia",
                 "title_inggris", "hastag", "description_hook", "description_context",
                 "keyword_tags", "tiktok_title_id", "tiktok_caption_id", "tiktok_caption",
-                "alasan", "klasifikasi_akun", "hook_v2", "keep_segments"
+                "alasan", "klasifikasi_akun", "hook_v2", "keep_segments", "reaction_inserts"
             ]
         }
     }
