@@ -58,6 +58,7 @@ broll = _load_studio_internal_module("broll.py", "clipping_studio_broll")
 download_pexels_broll = broll.download_pexels_broll
 crop_center_broll = broll.crop_center_broll
 subtitles = _load_studio_internal_module("subtitles.py", "clipping_studio_subtitles")
+vo_overlay_mod = _load_studio_internal_module("voiceover_overlay.py", "clipping_studio_voiceover_overlay")
 buat_file_ass = subtitles.buat_file_ass
 effects = _load_studio_internal_module("effects.py", "clipping_studio_effects")
 siapkan_glitch_video = effects.siapkan_glitch_video
@@ -477,6 +478,40 @@ def proses_klip(
             and not getattr(cfg, "no_segment_trim", False)
         )
 
+        # VOICE-OVER PLAN — "overlay" (default) plays the voice over the moving
+        # clip; "intro" is the old freeze-frame + equalizer card before the clip.
+        vo_data = clip.get("voiceover")
+        vo_mode = getattr(cfg, "voiceover_mode", "overlay")
+        vo_overlay = None
+        main_segmen = data_segmen
+        if (
+            vo_mode == "overlay"
+            and vo_data
+            and os.path.exists(vo_data.get("audio_path", ""))
+        ):
+            seg_plan = keep_segments if use_segments else None
+            clip_dur = vo_overlay_mod.clip_output_duration(m_start, m_end, seg_plan)
+            vo_dur = vo_overlay_mod.probe_duration(vo_data["audio_path"])
+            if vo_dur is None:
+                segs = vo_data.get("segments") or []
+                vo_dur = float(segs[-1]["end"]) if segs else 0.0
+            offset = float(clip.get("voiceover_offset", getattr(cfg, "voiceover_offset", 0.5)))
+            window = vo_overlay_mod.plan_window(vo_dur, clip_dur, offset)
+            if vo_dur > clip_dur:
+                print(
+                    f"   ⚠️ [VO] Voice-over ({vo_dur:.1f}s) is longer than the clip "
+                    f"({clip_dur:.1f}s); the end of the voice-over will be cut."
+                )
+            print(
+                f"   🎙️ [VO] Voice-over plays over the clip from {window[0]:.1f}s to {window[1]:.1f}s "
+                f"(game audio down to {int(getattr(cfg, 'original_volume', 0.3) * 100)}%)."
+            )
+            vo_overlay = {"window": window}
+            if not cfg.no_subs and vo_data.get("segments"):
+                main_segmen = vo_overlay_mod.merge_captions(
+                    data_segmen, vo_data["segments"], window, m_start, seg_plan
+                )
+
         if use_segments:
             print(f"   📸 [Main] Rendering {len(keep_segments)} segments (smart trim)...")
             seg_ts_parts = []
@@ -513,7 +548,7 @@ def proses_klip(
                 # Subtitle for this segment
                 if not cfg.no_subs:
                     buat_file_ass(
-                        data_segmen, s_start, s_end, s_ass, rasio, cfg,
+                        main_segmen, s_start, s_end, s_ass, rasio, cfg,
                         typography_plan=typography_plan, gunakan_advanced=True,
                         get_x_func=get_x_main, source_dim=source_dim,
                     )
@@ -645,11 +680,9 @@ def proses_klip(
                     label=f"Rank {rank} Main",
                 )
 
-            vo_data = clip.get("voiceover")
-            
             if not cfg.no_subs:
                 buat_file_ass(
-                    data_segmen,
+                    main_segmen,
                     m_start,
                     m_end,
                     a_main,
@@ -741,12 +774,30 @@ def proses_klip(
                 if rc_m != 0:
                     raise RuntimeError(f"FFmpeg main{lbl_suffix} gagal:\n" + "\n".join(err_m))
 
-        # VOICE-OVER INTRO GENERATION
+        # VOICE-OVER OVER THE MOVING CLIP (overlay mode)
+        if vo_overlay:
+            render_stage = "voiceover_overlay"
+            print("   🎙️ [VO] Mixing voice-over into the clip (video keeps playing)...")
+            overlay_targets = [m_ts] + ([m_ts_dev] if dev_dual else [])
+            for target_ts in overlay_targets:
+                if not os.path.exists(target_ts):
+                    continue
+                mixed_ts = target_ts + ".vo.ts"
+                vo_overlay_mod.mix_into_clip(
+                    target_ts,
+                    vo_data["audio_path"],
+                    vo_overlay["window"],
+                    duck_volume=getattr(cfg, "original_volume", 0.3),
+                    vo_volume=getattr(cfg, "voiceover_volume", 1.0),
+                    out_path=mixed_ts,
+                )
+                os.replace(mixed_ts, target_ts)
+
+        # VOICE-OVER INTRO GENERATION (intro mode: freeze frame + equalizer)
         render_stage = "voiceover"
         vo_ts = None
         vo_ts_dev = None
-        vo_data = clip.get("voiceover")
-        if vo_data and os.path.exists(vo_data["audio_path"]):
+        if vo_mode == "intro" and vo_data and os.path.exists(vo_data["audio_path"]):
             vo_ts = os.path.join(cfg.outputs_dir, f"vo_intro_{rank}.ts")
             vo_ts_dev = os.path.join(cfg.outputs_dir, f"vo_intro_{rank}_dev.ts")
             print("   📸 [VO] Render voice-over intro (freeze frame + equalizer)...")
