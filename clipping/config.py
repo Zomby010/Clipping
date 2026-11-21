@@ -129,7 +129,9 @@ URL_FONT_THUMBNAIL = (
     "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Black.ttf"
 )
 
-URL_GLITCH_VIDEO = "https://www.youtube.com/watch?v=5nBcNRYmjs0"
+# The old glitch video on YouTube went private, so the glitch transition is
+# generated locally with FFmpeg. Set a URL here to download one instead.
+URL_GLITCH_VIDEO = None
 # Tasks FaceDetector in MediaPipe 0.10.21 uses the short-range 896-box graph.
 # A distinct, versioned filename prevents reuse of the incompatible full-range cache.
 MEDIAPIPE_MODEL_FILENAME = "blaze_face_short_range_v1.tflite"
@@ -147,6 +149,14 @@ BGM_DIR = os.path.abspath(os.path.join(BASE_DIR, "assets", "bgm"))
 # Reaction clips: assets/reactions/<mood>/*.mp4 (laugh, shock, hype, ...)
 REACTIONS_DIR = os.path.abspath(os.path.join(BASE_DIR, "assets", "reactions"))
 REACTION_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
+
+
+def env_key(name: str) -> str:
+    """An API key from the environment/.env, or "" when unset or still the .env.sample placeholder."""
+    value = (os.environ.get(name) or "").strip().strip('"').strip("'")
+    if not value or value.startswith("your-") or value.endswith("-here"):
+        return ""
+    return value
 
 
 def list_reaction_moods(reactions_dir):
@@ -939,9 +949,9 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
             os.path.join(base_dir, f"face_yolov{args.yolo_size}.pt")
         ),
         # API keys (from env)
-        api_key_gemini=os.environ.get("GOOGLE_API_KEY", ""),
-        hf_token=os.environ.get("HF_TOKEN", ""),
-        pexels_api_key=os.environ.get("PEXELS_API_KEY", ""),
+        api_key_gemini=env_key("GOOGLE_API_KEY"),
+        hf_token=env_key("HF_TOKEN"),
+        pexels_api_key=env_key("PEXELS_API_KEY"),
         # Pengaturan utama
         source_platform="tiktok" if args.tiktok else args.source,
         url_youtube=url_list[0] if len(url_list) == 1 else url_list,
@@ -966,7 +976,11 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         white_flash_duration=args.white_flash_duration,
         no_segment_trim=args.no_segment_trim,
         silence_trim=args.silence_trim,
-        use_broll=not args.no_broll,
+        use_broll=not args.no_broll and bool(env_key("PEXELS_API_KEY")),
+        broll_off_reason=(
+            "turned off" if args.no_broll
+            else ("" if env_key("PEXELS_API_KEY") else "no Pexels API key")
+        ),
         use_hook_glitch=not args.no_hook,
         use_auto_bgm=not args.no_bgm,
         use_karaoke_effect=not args.no_karaoke,
@@ -1019,8 +1033,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         claude_max_sheets=args.claude_max_sheets,
         story_mode=args.story_mode,
         story_brief=args.story_brief,
-        api_key_anthropic=os.environ.get("ANTHROPIC_API_KEY", ""),
-        api_key_nvidia=os.environ.get("NVIDIA_API_KEY", ""),
+        api_key_anthropic=env_key("ANTHROPIC_API_KEY"),
+        api_key_nvidia=env_key("NVIDIA_API_KEY"),
         nvidia_model=args.nvidia_model,
         gemini_model=args.gemini_model,
         gemini_fallback_model=args.gemini_fallback_model,

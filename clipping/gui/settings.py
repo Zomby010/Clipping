@@ -401,3 +401,42 @@ def write_env(updates: dict, path: str | None = None) -> None:
 
 def library_dir(values: dict) -> str:
     return (str(values.get("library_dir") or "").strip()) or os.path.join(REPO_DIR, "My Clips")
+
+
+# ------------------------------------------------------------------ run output
+
+class OutputSplitter:
+    """
+    Splits a program's raw output into ("line", text) and ("progress", text).
+    Text ending in a carriage return (\\r) is a progress bar redrawing itself:
+    the window shows it by replacing the previous progress line, so a
+    10-minute transcription is one line in the log, not thousands.
+    """
+
+    def __init__(self):
+        import codecs
+        self._dec = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._buf = ""
+
+    def feed(self, data: bytes) -> list[tuple[str, str]]:
+        self._buf += self._dec.decode(data)
+        out = []
+        while True:
+            cut = [i for i in (self._buf.find("\n"), self._buf.find("\r")) if i >= 0]
+            if not cut:
+                break
+            i = min(cut)
+            piece, sep, rest = self._buf[:i], self._buf[i], self._buf[i + 1:]
+            if sep == "\r" and rest.startswith("\n"):
+                sep, rest = "\n", rest[1:]
+            elif sep == "\r" and not rest:
+                break  # wait: the next byte may be the \n of a \r\n pair
+            self._buf = rest
+            out.append(("line" if sep == "\n" else "progress", piece))
+        return out
+
+    def flush(self) -> list[tuple[str, str]]:
+        rest = self._buf + self._dec.decode(b"", final=True)
+        self._buf = ""
+        rest = rest.rstrip("\r")
+        return [("line", rest)] if rest else []

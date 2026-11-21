@@ -353,7 +353,7 @@ def proses_klip(
                     check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
                 h_ts_parts.append(trans_ts)
-                lbl = f"Transisi {i+1}" if i < len(items) - 1 else "Transisi akhir"
+                lbl = f"Transition {i+1}" if i < len(items) - 1 else "Final transition"
                 print(f"      ⚡ {lbl} ({trans_type}) added.")
 
             # Concat all hook v2 pieces into h_ts
@@ -1096,7 +1096,7 @@ def proses_klip(
 
         # FINAL CONCAT
         render_stage = "concat"
-        print("   🔗 [Final] Menyelesaikan clip akhir...")
+        print("   🔗 [Final] Finishing the clip...")
         
         # Calculate target dimensions for each run
         out_w_std, out_h_std = _get_render_dims(cfg, rasio, source_h=sh)

@@ -83,6 +83,7 @@ class StudioApp:
         self.rows: list[tuple[S.Field, ttk.Frame, ttk.LabelFrame]] = []
         self.proc: subprocess.Popen | None = None
         self.log_queue: queue.Queue = queue.Queue()
+        self._progress_open = False
 
         root.title(APP_NAME)
         root.geometry("1040x780")
@@ -552,7 +553,7 @@ class StudioApp:
         try:
             self.proc = subprocess.Popen(
                 cmd, cwd=S.REPO_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding="utf-8", errors="replace", bufsize=1,
+                bufsize=0,
                 start_new_session=(os.name == "posix"),
             )
         except OSError as e:
@@ -566,8 +567,15 @@ class StudioApp:
         self.progress.start(12)
 
     def _reader(self, proc):
-        for line in proc.stdout:
-            self.log_queue.put(line)
+        splitter = S.OutputSplitter()
+        while True:
+            chunk = proc.stdout.read1(65536) if hasattr(proc.stdout, "read1") else proc.stdout.read(4096)
+            if not chunk:
+                break
+            for item in splitter.feed(chunk):
+                self.log_queue.put(item)
+        for item in splitter.flush():
+            self.log_queue.put(item)
         proc.wait()
         self.log_queue.put(("__done__", proc.returncode))
 
@@ -604,6 +612,16 @@ class StudioApp:
                 item = self.log_queue.get_nowait()
                 if isinstance(item, tuple) and item and item[0] == "__done__":
                     self._finished(item[1])
+                elif isinstance(item, tuple) and item[0] == "progress":
+                    if item[1].strip():
+                        self._log_progress(item[1])
+                elif isinstance(item, tuple) and item[0] == "line":
+                    if self._progress_open:
+                        self._log_progress(item[1])
+                        self._progress_open = False
+                        self._log("\n")
+                    else:
+                        self._log(item[1] + "\n")
                 else:
                     self._log(item)
         except queue.Empty:
@@ -620,7 +638,21 @@ class StudioApp:
         self.log.see("end")
         self.log.configure(state="disabled")
 
+    def _log_progress(self, text: str):
+        """Show a redrawing progress bar on one line that updates in place."""
+        self.log.configure(state="normal")
+        if self._progress_open:
+            self.log.delete("end-1c linestart", "end-1c")
+        elif self.log.get("end-2c", "end-1c") not in ("", "\n"):
+            self.log.insert("end", "\n")
+        self.log.insert("end", text.strip())
+        self._progress_open = True
+        self.log.see("end")
+        self.log.configure(state="disabled")
+        self.status_var.set(text.strip()[:110])
+
     def _clear_log(self):
+        self._progress_open = False
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")

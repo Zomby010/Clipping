@@ -87,6 +87,9 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
             whisper_model_instance=whisper_model_instance,
         )
 
+    # Who made the source video (saved at download), so the AI never claims it as ours.
+    cfg.source_creators = engine.load_source_creators(cfg.file_video_asli)
+
     # Step 3 — Gemini AI analysis
     gemini_output_path = os.path.join(cfg.outputs_dir, "gemini_response.json")
     
@@ -112,6 +115,11 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
             json.dump(hasil_json, f, indent=4, ensure_ascii=False)
         print(f"💾 AI answer saved to: {gemini_output_path}")
         save_run_metadata(cfg)
+
+    # Never let the source creator's name end up in our tags/hashtags.
+    removed = engine.scrub_source_names(hasil_json, getattr(cfg, "source_creators", []) or [])
+    if removed:
+        print(f"🧹 Removed {removed} tag(s)/hashtag(s) that named the source creator.")
 
     # Step 4 — Metadata normalisation
     hasil_json = metadata.normalize_and_validate(hasil_json)

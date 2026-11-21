@@ -162,7 +162,7 @@ def buat_video_camera_switch(
     #   N active + N faces → sort faces by X; sort speakers by label; assign in order
     #   1 active + N faces → use speaker's last-known position to pick nearest face
     #   otherwise          → skip (ambiguous / no data)
-    print(f"🧠 {label} - Analisa wajah (camera switch) dimulai...", flush=True)
+    print(f"🧠 {label} - Face analysis (camera switch) started...", flush=True)
 
     all_frame_data: list[dict] = []  # [{time, face_centers, active_now}]
     speaker_solo_cxs: dict[str, list] = {}  # speaker → [cx, ...] from 1:1 frames
@@ -243,8 +243,8 @@ def buat_video_camera_switch(
         detect_pct = (
             min(100, int(current_time / duration * 100)) if duration > 0 else 100
         )
-        if detect_pct != last_detect_percent:
-            print(f"⏳ {label} - Analisa wajah: {detect_pct:3d}%", flush=True)
+        if last_detect_percent < 0 or detect_pct >= last_detect_percent + 10 or (detect_pct == 100 and last_detect_percent != 100):  # every 10%
+            print(f"⏳ {label} - Face analysis: {detect_pct:3d}%", flush=True)
             last_detect_percent = detect_pct
 
         current_time += STEP_DETEKSI
@@ -533,7 +533,7 @@ def buat_video_camera_switch(
         last_render_percent = -1
         tracking_log = [] # Store (t, cx) for each frame
 
-        print(f"🎬 {label} - Render camera switch dimulai...", flush=True)
+        print(f"🎬 {label} - Render camera switch started...", flush=True)
 
         while True:
             ret, frame = cap.read()
@@ -727,7 +727,7 @@ def buat_video_camera_switch(
             frame_count += 1
 
             render_pct = min(100, int(t / duration * 100)) if duration > 0 else 100
-            if render_pct != last_render_percent:
+            if last_render_percent < 0 or render_pct >= last_render_percent + 10 or (render_pct == 100 and last_render_percent != 100):  # every 10%
                 print(
                     f"⏳ {label} - Render camera switch: {render_pct:3d}% | "
                     f"{format_seconds(t)} / {format_seconds(duration)}",

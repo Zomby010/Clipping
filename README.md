@@ -171,6 +171,7 @@ One window instead of command-line flags.
 
 ```bash
 sudo apt install python3-tk ffmpeg          # once, on Ubuntu
+curl -fsSL https://deno.land/install.sh | sh   # once: JavaScript runtime yt-dlp uses for YouTube
 bash scripts/install_desktop_app.sh         # adds "Clipping Studio" to the app menu and the Desktop
 python clipping_studio.py                   # or start it from a terminal
 ```

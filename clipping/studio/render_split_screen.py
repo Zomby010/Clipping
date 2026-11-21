@@ -212,7 +212,7 @@ def buat_video_split_screen(
     #   1 active + N faces → use speaker's last-known position to pick nearest face
     #   otherwise          → skip (ambiguous or no data)
 
-    print(f"🧠 {label} - Analisa wajah (split-screen) dimulai...", flush=True)
+    print(f"🧠 {label} - Face analysis (split-screen) started...", flush=True)
 
     all_frame_data: list[dict] = []  # [{time, face_centers, face_boxes, active_now}]
     speaker_solo_cxs: dict[str, list] = {}  # speaker → [cx, ...] from 1:1 frames
@@ -337,8 +337,8 @@ def buat_video_split_screen(
         detect_percent = (
             min(100, int((current_time / duration) * 100)) if duration > 0 else 100
         )
-        if detect_percent != last_detect_percent:
-            print(f"⏳ {label} - Analisa wajah: {detect_percent:3d}%", flush=True)
+        if last_detect_percent < 0 or detect_percent >= last_detect_percent + 10 or (detect_percent == 100 and last_detect_percent != 100):  # every 10%
+            print(f"⏳ {label} - Face analysis: {detect_percent:3d}%", flush=True)
             last_detect_percent = detect_percent
 
         current_time += STEP_DETEKSI
@@ -753,7 +753,7 @@ def buat_video_split_screen(
         frame_count = 0
         last_render_percent = -1
 
-        print(f"🎬 {label} - Render split-screen {'(dynamic)' if is_dynamic else ''} dimulai...", flush=True)
+        print(f"🎬 {label} - Render split-screen {'(dynamic)' if is_dynamic else ''} started...", flush=True)
         tracking_log = [] # Store (t, cx) for subtitle tracking
 
         while True:
@@ -1147,7 +1147,7 @@ def buat_video_split_screen(
             render_percent = (
                 min(100, int((t / duration) * 100)) if duration > 0 else 100
             )
-            if render_percent != last_render_percent:
+            if last_render_percent < 0 or render_percent >= last_render_percent + 10 or (render_percent == 100 and last_render_percent != 100):  # every 10%
                 print(
                     f"⏳ {label} - Render split-screen: {render_percent:3d}% | "
                     f"{format_seconds(t)} / {format_seconds(duration)}",

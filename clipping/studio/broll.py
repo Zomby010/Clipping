@@ -12,6 +12,7 @@ import textwrap
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 
 import cv2
 import mediapipe as mp
@@ -48,6 +49,7 @@ build_ffmpeg_progress_cmd = _ffmpeg_utils.build_ffmpeg_progress_cmd
 run_ffmpeg_with_progress = _ffmpeg_utils.run_ffmpeg_with_progress
 
 USED_PEXELS_IDS = set()
+PEXELS_DISABLED = False  # set after a missing/refused key so we warn once, not per B-roll
 
 
 def download_pexels_broll(query, rasio, output_filename, pexels_api_key):
@@ -72,10 +74,13 @@ def download_pexels_broll(query, rasio, output_filename, pexels_api_key):
     Raises:
         None explicitly. Exceptions during download or API calls are caught and return False.
     """
-    global USED_PEXELS_IDS
+    global USED_PEXELS_IDS, PEXELS_DISABLED
 
-    if not pexels_api_key:
-        print("   ⚠️ PEXELS_API_KEY not found. Skipping B-roll.")
+    if PEXELS_DISABLED:
+        return False
+    if not pexels_api_key or pexels_api_key.startswith("your-") or pexels_api_key.endswith("-here"):
+        print("   ⚠️ No Pexels API key (add one in the app's API keys tab). Skipping B-roll for this run.")
+        PEXELS_DISABLED = True
         return False
 
     orientation = "portrait" if _is_vertical_ratio(rasio) else "landscape"
@@ -102,6 +107,13 @@ def download_pexels_broll(query, rasio, output_filename, pexels_api_key):
     try:
         with urllib.request.urlopen(req) as response:
             data = json.load(response)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            print("   ⚠️ Pexels refused the API key (HTTP %d). Check PEXELS_API_KEY. Skipping B-roll for this run." % e.code)
+            PEXELS_DISABLED = True
+        else:
+            print(f"   ⚠️ Pexels API error while searching '{query}': {e}")
+        return False
     except Exception as e:
         print(f"   ⚠️ Pexels API error while searching '{query}': {e}")
         return False
