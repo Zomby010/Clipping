@@ -117,7 +117,7 @@ def buat_video_split_screen(
     detector = None
     if cfg.face_detector == "yolo":
         if not os.path.exists(cfg.file_yolo_model):
-            print(f"   📥 Mendownload YOLOv8 Face Model ({cfg.yolo_size})...")
+            print(f"   📥 Downloading the YOLOv8 face model ({cfg.yolo_size})...")
             import urllib.request
 
             urllib.request.urlretrieve(cfg.url_yolo_model, cfg.file_yolo_model)
@@ -1160,16 +1160,16 @@ def buat_video_split_screen(
             stderr_data = writer_main.stderr.read().decode("utf-8", errors="ignore")
             return_code = writer_main.wait()
             if return_code != 0:
-                raise RuntimeError(f"FFmpeg writer main gagal: {stderr_data[-1000:]}")
+                raise RuntimeError(f"FFmpeg writer (main) failed: {stderr_data[-1000:]}")
         
         if writer_dev:
             writer_dev.stdin.close()
             stderr_data_dev = writer_dev.stderr.read().decode("utf-8", errors="ignore")
             return_code_dev = writer_dev.wait()
             if return_code_dev != 0:
-                raise RuntimeError(f"FFmpeg writer dev gagal: {stderr_data_dev[-1000:]}")
+                raise RuntimeError(f"FFmpeg writer (dev) failed: {stderr_data_dev[-1000:]}")
 
-        print(f"✅ {label} selesai.", flush=True)
+        print(f"✅ {label} done.", flush=True)
 
     finally:
         cap.release()

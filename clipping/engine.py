@@ -77,8 +77,8 @@ def _download_gdrive(url: str, output_path: str) -> None:
     file_id = _extract_gdrive_file_id(url)
     if not file_id:
         raise RuntimeError(
-            f"Tidak dapat mengekstrak file ID dari URL Google Drive: {url}\n"
-            "      Format yang didukung:\n"
+            f"Could not read the file ID from the Google Drive link: {url}\n"
+            "      Supported formats:\n"
             "        • https://drive.google.com/file/d/FILE_ID/view\n"
             "        • https://drive.google.com/open?id=FILE_ID"
         )
@@ -156,7 +156,7 @@ def download_video(
     platform_label = _PLATFORM_LABELS.get(source_platform, source_platform)
     uses_youtube_format = source_platform == "youtube"
 
-    print(f"[1/3] Mendownload video dari {platform_label}...")
+    print(f"[1/3] Downloading the video from {platform_label}...")
     if download_source_height == "max":
         print("      🎯 Source quality: highest available", flush=True)
     else:
@@ -167,9 +167,9 @@ def download_video(
         _download_gdrive(url, output_path)
         if not os.path.exists(output_path):
             raise RuntimeError(
-                f"❌ Download dari Google Drive gagal — file tidak ditemukan di {output_path}"
+                f"❌ Google Drive download failed: no file found at {output_path}"
             )
-        print(f"      ✅ Video berhasil didownload dari Google Drive.", flush=True)
+        print(f"      ✅ Video downloaded from Google Drive.", flush=True)
         return
 
     # --- Build yt-dlp options per platform ---
@@ -198,7 +198,7 @@ def download_video(
 
     # --- Subtitle download — only supported for YouTube ---
     if use_dlp_subs and uses_youtube_format:
-        print("      Mencoba mencari subtitle bahasa otomatis (en / id)...")
+        print("      Looking for automatic subtitles (en / id)...")
         import glob
 
         for lang in ["en", "id"]:
@@ -218,12 +218,12 @@ def download_video(
 
                 # Cek apakah json3 untuk bahasa ini benar-benar terdownload
                 if glob.glob(output_path.replace(".mp4", f".*.json3")):
-                    print(f"      ✅ Subtitle '{lang}' ditemukan. Melanjutkan ke video...")
+                    print(f"      ✅ Found '{lang}' subtitles. Moving on to the video...")
                     break
             except Exception as e:
-                print(f"      ⚠️ Gagal menarik subtitle '{lang}' ({e}). Mencoba opsi selanjutnya...")
+                print(f"      ⚠️ Could not get '{lang}' subtitles ({e}). Trying the next option...")
     elif use_dlp_subs and not uses_youtube_format:
-        print(f"      ℹ️ {platform_label} tidak menyediakan subtitle otomatis. Whisper akan digunakan.")
+        print(f"      ℹ️ {platform_label} has no automatic subtitles. Whisper will transcribe instead.")
 
     # Jalankan download video terpisah dari urusan subtitle
     _apply_cookies(ydl_opts, yt_cookies)
@@ -233,17 +233,17 @@ def download_video(
             info = ydl.extract_info(url, download=False)
             best_h = info.get("height", "unknown")
             v_codec = info.get("vcodec", "unknown")
-            print(f"      ✅ Mendownload: {best_h}p (Codec: {v_codec})", flush=True)
+            print(f"      ✅ Downloading: {best_h}p (codec: {v_codec})", flush=True)
         except Exception as e:
-            print(f"      ⚠️ Gagal mengecek info detail: {e}", flush=True)
+            print(f"      ⚠️ Could not read the video details: {e}", flush=True)
 
         ydl.download([url])
 
     # --- Post-download verification ---
     if not os.path.exists(output_path):
         raise RuntimeError(
-            f"❌ Download dari {platform_label} gagal — file video tidak ditemukan di {output_path}.\n"
-            "      Pastikan URL valid dan bisa diakses secara publik."
+            f"❌ Download from {platform_label} failed: no video file found at {output_path}.\n"
+            "      Check that the link is correct and the video is public."
         )
 
 
@@ -258,7 +258,7 @@ def parse_youtube_json3_subs(json_path: str, max_words_per_subtitle: int = 5) ->
     """
     import json
 
-    print("[2/3] Memproses subtitle JSON3 dari YouTube...")
+    print("[2/3] Reading the YouTube subtitles (JSON3)...")
     transkrip_lengkap = ""
     data_segmen = []
 
@@ -358,7 +358,7 @@ def parse_youtube_json3_subs(json_path: str, max_words_per_subtitle: int = 5) ->
         return transkrip_lengkap, data_segmen
 
     except Exception as e:
-        print(f"⚠️ Gagal memparsing JSON3: {e}")
+        print(f"⚠️ Could not read the JSON3 subtitles: {e}")
         return "", []
 
 
@@ -388,7 +388,7 @@ def transcribe_video(
     data_segmen : list[dict]
         Word-level segments grouped by *max_words_per_subtitle*.
     """
-    print("[2/3] Memulai transkripsi dengan Faster-Whisper (Level Per-Kata)...")
+    print("[2/3] Transcribing with Faster-Whisper (word by word)...")
 
     # Langkah-langkah ini berjalan tanpa output di dalam faster-whisper sebelum
     # segmen pertama dihasilkan, jadi kita umumkan tiap fase — kalau tidak, run
@@ -396,18 +396,18 @@ def transcribe_video(
     if whisper_model_instance is not None:
         model = whisper_model_instance
         print(
-            f"      ♻️ Menggunakan model Whisper yang sudah di-load (batch mode)",
+            f"      ♻️ Reusing the Whisper model that is already loaded (batch mode)",
             flush=True,
         )
     else:
         print(
-            f"      ⏳ Memuat model Whisper '{model_size}' ({device})"
-            " — unduhan pertama kali bisa memakan waktu...",
+            f"      ⏳ Loading Whisper model '{model_size}' ({device})"
+            " (the first download can take a while)...",
             flush=True,
         )
         model = WhisperModel(model_size, device=device, compute_type=compute_type)
 
-    print("      ⏳ Mendekode audio & mengekstrak fitur (belum ada output)...", flush=True)
+    print("      ⏳ Decoding the audio and extracting features (no output yet)...", flush=True)
     segments, info = model.transcribe(video_path, beam_size=5, word_timestamps=True)
 
     transkrip_lengkap = ""
@@ -464,23 +464,23 @@ def transcribe_video(
 TARGET_ACCOUNTS = {
     "Business": {
         "akun_tujuan": "Business.Mereska",
-        "angle_desc": "Kalau angle-nya bisnis, brand, omzet, jualan, founder, marketing, atau UMKM.",
-        "bio": "Insight bisnis, founder story & brand lokal. Business | Founder | Finance | Beauty | Marketing"
+        "angle_desc": "When the angle is business, brands, revenue, sales, founders, marketing or small businesses.",
+        "bio": "Business insight, founder stories and local brands. Business | Founder | Finance | Beauty | Marketing"
     },
     "Life": {
         "akun_tujuan": "Life.Mereska",
-        "angle_desc": "Kalau angle-nya personal life, lifestyle, skincare, career, mindset, relationship, personal finance, atau self growth.",
-        "bio": "Klip insight buat upgrade hidup & mindset. Podcast | Career | Finance | Beauty | Self Growth"
+        "angle_desc": "When the angle is personal life, lifestyle, skincare, career, mindset, relationships, personal finance or self-growth.",
+        "bio": "Insight clips to upgrade your life and mindset. Podcast | Career | Finance | Beauty | Self Growth"
     },
     "Creator": {
         "akun_tujuan": "Creator.Mereska",
-        "angle_desc": "Kalau angle-nya konten digital, AI, affiliate, tools, clipping, monetisasi, atau cara menghasilkan uang dari konten.",
-        "bio": "Ngulik konten digital biar bisa jadi uang. AI | Affiliate | Clips | Tools | Monetize"
+        "angle_desc": "When the angle is digital content, AI, affiliate, tools, clipping, monetization or making money from content.",
+        "bio": "Turning digital content into money. AI | Affiliate | Clips | Tools | Monetize"
     },
     "Muslim": {
         "akun_tujuan": "Muslim.Mereska",
-        "angle_desc": "Kalau angle-nya religi, rezeki, doa, ibadah, kerja karena Allah, keluarga Islami, atau bisnis dengan nilai Islam.",
-        "bio": "Reminder kerja, rezeki & hidup bernilai Islam. Islamic | Rezeki | Family | Work | Business"
+        "angle_desc": "When the angle is faith, provision, prayer, worship, working for God, Islamic family life or business with Islamic values.",
+        "bio": "Reminders on work, provision and a life with Islamic values. Islamic | Provision | Family | Work | Business"
     }
 }
 
@@ -544,7 +544,7 @@ def _generate_json_with_retry(client, model, fallback_model, contents, config):
 
             text = getattr(response, "text", None)
             if not text or not text.strip():
-                raise ValueError("Gemini mengembalikan response.text kosong.")
+                raise ValueError("Gemini returned an empty response.text.")
 
             return json.loads(text)
 
@@ -554,7 +554,7 @@ def _generate_json_with_retry(client, model, fallback_model, contents, config):
             retryable = _is_retryable(exc)
 
             print(
-                f"[Gemini] Attempt {attempt}/{MAX_ATTEMPTS} gagal | "
+                f"[Gemini] Attempt {attempt}/{MAX_ATTEMPTS} failed | "
                 f"status={status_code} | error={exc}"
             )
 
@@ -562,12 +562,12 @@ def _generate_json_with_retry(client, model, fallback_model, contents, config):
                 break
 
             wait_seconds = INITIAL_WAIT_SECONDS + ((attempt - 1) * WAIT_INCREMENT_SECONDS)
-            print(f"[Gemini] Retry lagi dalam {wait_seconds} detik...")
+            print(f"[Gemini] Trying again in {wait_seconds} seconds...")
             time.sleep(wait_seconds)
 
-    print(f"[Gemini] Percobaan dengan model utama ({model}) gagal.")
+    print(f"[Gemini] The main model ({model}) failed.")
     if fallback_model:
-        print(f"[Gemini] Mencoba satu kali lagi dengan fallback model ({fallback_model})...")
+        print(f"[Gemini] Trying once more with the fallback model ({fallback_model})...")
         try:
             response = client.models.generate_content(
                 model=fallback_model,
@@ -576,19 +576,19 @@ def _generate_json_with_retry(client, model, fallback_model, contents, config):
             )
             text = getattr(response, "text", None)
             if not text or not text.strip():
-                raise ValueError("Gemini fallback mengembalikan response.text kosong.")
+                raise ValueError("The Gemini fallback returned an empty response.text.")
 
             return json.loads(text)
         except Exception as exc_fallback:
-            print(f"[Gemini] Fallback model gagal | error={exc_fallback}")
+            print(f"[Gemini] Fallback model failed | error={exc_fallback}")
             raise RuntimeError(
-                f"Gagal memanggil Gemini utama & fallback. "
-                f"Laporan Utama status={status_code}, error={last_exc} | "
-                f"Laporan Fallback error={exc_fallback}"
+                f"Both the main and fallback Gemini models failed. "
+                f"Main: status={status_code}, error={last_exc} | "
+                f"Fallback: error={exc_fallback}"
             ) from exc_fallback
 
     raise RuntimeError(
-        f"Gagal memanggil Gemini setelah {MAX_ATTEMPTS} percobaan. Error terakhir: {last_exc}"
+        f"Gemini failed after {MAX_ATTEMPTS} attempts. Last error: {last_exc}"
     ) from last_exc
 
 
@@ -606,16 +606,16 @@ def get_analysis_prompt(transkrip_lengkap: str, jumlah_clip: int, durasi_hook: i
         _hook_v2_style = getattr(cfg, "hook_v2_style", "controversial_fast_glitch")
         _hook_v2_prompt = f"""
 
-HOOK V2 (MULTI-HOOK INTRO — WAJIB):
-- Selain hook standar, buat juga "hook_v2" berisi {_hook_v2_items} potongan pendek (0.5-2 detik) yang diambil dari momen paling mencolok/controversial/emosional di dalam klip.
-- Gaya: {_hook_v2_style}
-- Setiap item harus berisi: start_time, end_time, dan text (teks on-screen singkat 2-5 kata).
-- Item harus diurutkan dari paling kuat ke paling lemah.
-- Transisi antar item akan ditambahkan otomatis (white flash / glitch) oleh sistem.
-- Isi field "hook_v2" sebagai objek dengan:
+HOOK V2 (MULTI-HOOK INTRO, REQUIRED):
+- Besides the standard hook, also create "hook_v2" with {_hook_v2_items} short cuts (0.5-2 seconds) taken from the most striking, controversial or emotional moments inside the clip.
+- Style: {_hook_v2_style}
+- Each item must contain: start_time, end_time and text (a short on-screen text of 2-5 words).
+- Order the items from strongest to weakest.
+- Transitions between items (white flash / glitch) are added automatically by the system.
+- Fill the "hook_v2" field as an object with:
   - "enabled": true
-  - "items": array dari objek (start_time, end_time, text)
-  - "transition": objek dengan "type" ("white_flash" atau "glitch")
+  - "items": an array of objects (start_time, end_time, text)
+  - "transition": an object with "type" ("white_flash" or "glitch")
 """
 
     # Build optional Segment Trimming prompt section
@@ -623,258 +623,233 @@ HOOK V2 (MULTI-HOOK INTRO — WAJIB):
     if cfg and not getattr(cfg, "no_segment_trim", False):
         _silence_hint = ""
         if cfg and getattr(cfg, "silence_trim", False):
-            _silence_hint = "\n- AGRESIF buang bagian diam/silence/dead air. Jangan sertakan jeda lebih dari 0.5 detik."
+            _silence_hint = "\n- AGGRESSIVELY remove silence and dead air. Do not keep pauses longer than 0.5 seconds."
         _segment_prompt = f"""
 
-SEGMENT-BASED TRIMMING (KEEP SEGMENTS — WAJIB):
-- Untuk setiap klip, analisis apakah ada bagian yang kurang menarik, terlalu diam, bertele-tele, atau filler di tengah.
-- Jika ada, pecah klip menjadi beberapa "keep_segments" — hanya potongan terbaik yang dipertahankan.
-- Setiap segment berisi: start_time dan end_time.
-- Segment harus berurutan secara kronologis dan tidak boleh overlap.
-- Jika seluruh durasi klip sudah padat dan menarik, cukup buat 1 segment yang mencakup seluruh durasi.{_silence_hint}
-- Isi field "keep_segments" sebagai array dari objek (start_time, end_time).
+SEGMENT-BASED TRIMMING (KEEP SEGMENTS, REQUIRED):
+- For each clip, check whether the middle contains weak, silent, rambling or filler parts.
+- If so, split the clip into several "keep_segments" and keep only the best pieces.
+- Each segment contains: start_time and end_time.
+- Segments must be in chronological order and must not overlap.
+- If the whole clip is already tight and engaging, use 1 segment that covers the whole clip.{_silence_hint}
+- Fill the "keep_segments" field as an array of objects (start_time, end_time).
 """
     return f"""
-Kamu adalah Art Director, Editor Video, dan Strategist Metadata Short-Form Content untuk TikTok, Reels, dan YouTube Shorts.
+You are an Art Director, Video Editor and Metadata Strategist for short-form content on TikTok, Reels and YouTube Shorts.
 
-Baca transkrip video berikut. Format transkrip:
-[detik_mulai - detik_selesai] teks
+Read the video transcript below. Transcript format:
+[start_second - end_second] text
 
-TUGAS UTAMA:
-- Carikan {jumlah_clip} momen paling menarik, paling kuat, paling shareable, dan paling berpotensi viral untuk dijadikan klip pendek.
-- Urutkan klip berdasarkan viral_score tertinggi (paling berpotensi viral) ke terendah. Peringkat ("rank") hanya sebagai nomor urut (1, 2, 3...).
-- Untuk setiap klip, hasilkan timing klip, hook, typography plan, b-roll plan, alasan pemilihan, metadata lintas platform, dan klasifikasi akun tujuan.
-- Semua output harus sangat relevan dengan isi klip, bukan isi video penuh secara umum.
+MAIN TASK:
+- Find the {jumlah_clip} most interesting, strongest, most shareable moments with the highest chance of going viral, to turn into short clips.
+- Sort the clips by viral_score from highest to lowest. "rank" is only the order number (1, 2, 3...).
+- For each clip, produce: clip timing, hook, typography plan, b-roll plan, the reason it was chosen, cross-platform metadata and the target account classification.
+- Every output must be specific to that clip, not to the full video in general.
 
-ATURAN PEMILIHAN KLIP & VIRAL-BILITY:
-- Durasi klip harus {MIN_CLIP_DURATION}-{MAX_CLIP_DURATION} detik.
-- Pilih bagian yang punya emosi, konflik, kejutan, insight, opini kuat, pelajaran praktis, atau punchline jelas.
-- Evaluasi kekuatan viral (viral-bility) dan berikan "viral_score" (1-100) yang merepresentasikan seberapa viral suatu klip.
-  - 90-100: Sangat berpotensi fyp/viral, emosi/konflik kuat, hook sangat nendang.
-  - 80-89: Menarik, berpotensi performa baik.
-  - 70-79: Standar, informatif tapi mungkin kurang greget.
-- Utamakan bagian yang tetap menarik walau ditonton tanpa konteks video penuh.
-- Hindari klip yang isinya terlalu mirip satu sama lain.
-- Jangan pilih klip yang terasa datar, bertele-tele, atau tidak punya payoff yang jelas.
+CLIP SELECTION & VIRALITY RULES:
+- Clip length must be {MIN_CLIP_DURATION}-{MAX_CLIP_DURATION} seconds.
+- Choose parts with emotion, conflict, surprise, insight, strong opinion, a practical lesson or a clear punchline.
+- Judge how viral each clip could be and give a "viral_score" (1-100):
+  - 90-100: Very likely to go viral, strong emotion/conflict, a hook that really hits.
+  - 80-89: Interesting, likely to perform well.
+  - 70-79: Average, informative but may lack punch.
+- Prefer moments that still work when watched without the context of the full video.
+- Avoid clips that are too similar to each other.
+- Do not pick clips that feel flat, rambling or without a clear payoff.
 
-ATURAN RETENTION & STRUKTUR KLIP:
-- Pastikan 3 detik pertama klip punya daya tarik kuat: hook, konflik, rasa penasaran, statement tajam, emosi, atau pertanyaan implisit.
-- Klip ideal memiliki struktur:
-  hook -> context singkat -> tension/insight -> payoff.
-- Jangan memilih klip yang baru menarik setelah terlalu lama berjalan.
-- Jika bagian awal segmen terlalu lambat, geser start_time ke kalimat yang lebih kuat.
-- Jika payoff sudah selesai, jangan memperpanjang klip tanpa alasan.
-- Jangan memasukkan intro, basa-basi, jeda panjang, atau transisi yang tidak menambah daya tarik.
-- Utamakan klip yang membuat penonton ingin:
-  1. berhenti scroll,
-  2. menonton sampai akhir,
-  3. komentar,
+RETENTION & STRUCTURE RULES:
+- The first 3 seconds must grab attention: a hook, conflict, curiosity, a sharp statement, emotion or an implied question.
+- The ideal clip structure is:
+  hook -> short context -> tension/insight -> payoff.
+- Do not pick clips that only get interesting after a long time.
+- If the start of a segment is slow, move start_time to a stronger sentence.
+- Once the payoff is over, do not extend the clip without reason.
+- Do not include intros, small talk, long pauses or transitions that add nothing.
+- Prefer clips that make viewers want to:
+  1. stop scrolling,
+  2. watch to the end,
+  3. comment,
   4. share,
   5. save,
-  6. atau merasa "ini gue banget".
+  6. or feel "this is so me".
 
-ATURAN PEMOTONGAN TIMING:
-- start_time harus dimulai sedekat mungkin dengan momen kuat pertama, bukan sekadar awal topik.
-- end_time harus berhenti setelah payoff, kesimpulan, punchline, atau emotional beat utama selesai.
-- Jangan potong terlalu awal jika kalimat masih menggantung.
-- Jangan lanjutkan klip terlalu lama setelah inti pesan selesai.
-- Klip harus tetap bisa dipahami tanpa harus menonton bagian sebelum atau sesudahnya.
-- Jika ada dua momen kuat yang terlalu berdekatan dan saling mendukung, boleh digabung selama durasi tetap {MIN_CLIP_DURATION}-{MAX_CLIP_DURATION} detik.
-- Jika ada dua momen kuat tetapi angle-nya berbeda, pisahkan sebagai kandidat klip berbeda.
+TIMING RULES:
+- start_time must begin as close as possible to the first strong moment, not just the start of a topic.
+- end_time must stop after the payoff, conclusion, punchline or main emotional beat is finished.
+- Do not cut too early while a sentence is still unfinished.
+- Do not keep the clip running long after the core message is done.
+- The clip must make sense without watching what comes before or after it.
+- If two strong moments are close together and support each other, they may be combined as long as the length stays {MIN_CLIP_DURATION}-{MAX_CLIP_DURATION} seconds.
+- If two strong moments have different angles, keep them as separate clip candidates.
 
-PENILAIAN INTERNAL VIRAL_SCORE:
-Nilai viral_score 1-100 berdasarkan komponen berikut. Ini hanya untuk penilaian internal, JANGAN menambahkan field baru ke JSON.
+INTERNAL VIRAL_SCORE ASSESSMENT:
+Score viral_score 1-100 from the components below. This is for internal judgement only; do NOT add new fields to the JSON.
 - Hook strength: 1-20
 - Emotional intensity: 1-20
 - Shareability/comment potential: 1-20
 - Standalone clarity: 1-20
 - Payoff/retention: 1-20
 
-Panduan penilaian:
-- Hook strength: seberapa kuat 3 detik pertama membuat orang berhenti scroll.
-- Emotional intensity: seberapa kuat emosi, konflik, keresahan, lucu, haru, marah, kagum, atau relatable-nya.
-- Shareability/comment potential: seberapa besar peluang orang komentar, debat, tag teman, share, atau save.
-- Standalone clarity: seberapa mudah klip dipahami tanpa konteks video penuh.
-- Payoff/retention: seberapa jelas reward menonton sampai akhir, seperti punchline, insight, twist, kesimpulan, atau pelajaran praktis.
-- Jangan pilih klip dengan viral_score di bawah 70 kecuali jumlah momen bagus di transkrip sangat terbatas.
+Scoring guide:
+- Hook strength: how strongly the first 3 seconds make people stop scrolling.
+- Emotional intensity: how strong the emotion, conflict, frustration, humour, warmth, anger, awe or relatability is.
+- Shareability/comment potential: how likely people are to comment, debate, tag a friend, share or save.
+- Standalone clarity: how easy the clip is to understand without the full video.
+- Payoff/retention: how clear the reward for watching to the end is, such as a punchline, insight, twist, conclusion or practical lesson.
+- Do not pick clips with a viral_score below 70 unless the transcript has very few good moments.
 
-KLASIFIKASI AKUN TUJUAN (UNTUK SETIAP KLIP):
-Tentukan akun tujuan berdasarkan ANGLE video dari klip tersebut. Jangan menilai hanya dari topik (misal: beauty tidak otomatis masuk Life). Nilai berdasarkan angle:
+TARGET ACCOUNT CLASSIFICATION (FOR EACH CLIP):
+Decide the target account from the ANGLE of the clip. Do not judge only by topic. Judge by angle:
 {_build_account_classification_prompt()}
 
-ATURAN KHUSUS KLASIFIKASI:
-1. Beauty tidak otomatis masuk Life. (Bahas omzet/brand -> Business. Review/lifestyle -> Life. Affiliate/konten -> Creator).
-2. Finance tidak otomatis masuk Business. (Bahas omzet/bisnis -> Business. Personal finance/nabung -> Life. Cara bikin konten finance -> Creator).
-3. Owner story dibagi berdasarkan angle. (Perjuangan brand -> Business. Kehidupan pribadi/keluarga -> Life. Rezeki/ibadah -> Muslim).
+SPECIAL CLASSIFICATION RULES:
+1. A topic does not automatically decide the account; the angle does. (Revenue/brand talk -> Business. Review/lifestyle -> Life. Affiliate/content making -> Creator).
+2. Finance does not automatically mean Business. (Revenue/business -> Business. Personal finance/saving -> Life. How to make finance content -> Creator).
+3. Founder stories are split by angle. (Building the brand -> Business. Personal/family life -> Life. Faith/provision -> Muslim).
 
-HOOK (WAJIB):
-- Ambil 1 kalimat paling punchy yang ADA DI DALAM klip.
-- Hook harus terasa kuat dan menarik perhatian dalam ~{durasi_hook} detik pertama.
-- Simpan sebagai hook_start_time dan hook_end_time.
-- Hook harus membuat orang ingin lanjut menonton, tapi jangan clickbait palsu.
-- Pastikan hook masih natural dan benar-benar diucapkan dalam transkrip.
-- Jika hook terbaik tidak berada tepat di awal kandidat klip, sesuaikan start_time agar hook muncul sedini mungkin.
-- Hook harus cocok sebagai teks pembuka on-screen untuk menahan penonton dalam 3 detik pertama.
+HOOK (REQUIRED):
+- Take the single most punchy sentence that IS INSIDE the clip.
+- The hook must feel strong and grab attention within the first ~{durasi_hook} seconds.
+- Save it as hook_start_time and hook_end_time.
+- The hook must make people want to keep watching, but no fake clickbait.
+- Make sure the hook is natural and actually spoken in the transcript.
+- If the best hook is not right at the start of the clip candidate, adjust start_time so the hook appears as early as possible.
+- The hook must work as opening on-screen text that holds viewers in the first 3 seconds.
 
 TYPOGRAPHY PLAN (KINETIC TYPOGRAPHY):
-- Pilih 3-6 kata TUNGGAL paling berbobot, emosional, atau paling layak ditekankan dari setiap klip.
-- Untuk setiap kata, tentukan:
-  1. 'kata_utama': kata spesifik tersebut, harus sama persis ejaannya dengan transkrip.
-  2. 'scale_level': pilih 1, 2, atau 3.
-     - 1 = normal/kecil
-     - 2 = besar/penekanan
-     - 3 = raksasa/sangat krusial
-  3. 'style': pilih "utama" atau "khusus".
-  4. 'animasi': pilih "bounce_pop" atau "stagger_up".
-- Jangan pilih frasa panjang. Hanya kata tunggal.
-- Prioritaskan kata yang paling kuat secara emosi, makna, atau retensi visual.
+- Pick the 3-6 most meaningful, emotional or emphasis-worthy SINGLE words from each clip.
+- For each word, set:
+  1. 'kata_utama': that exact word, spelled exactly as in the transcript.
+  2. 'scale_level': choose 1, 2 or 3.
+     - 1 = normal/small
+     - 2 = big/emphasis
+     - 3 = huge/critical
+  3. 'style': choose "utama" (main) or "khusus" (special).
+  4. 'animasi': choose "bounce_pop" or "stagger_up".
+- Do not pick long phrases. Single words only.
+- Prefer words with the strongest emotion, meaning or visual retention.
 
-B-ROLL (WAJIB JIKA RELEVAN):
-- Carikan maksimal 1-3 momen dalam klip yang sangat cocok disisipi video B-roll / stock footage.
-- Setiap B-roll berdurasi 3-7 detik.
-- Berikan:
+B-ROLL (REQUIRED IF RELEVANT):
+- Find at most 1-3 moments in the clip that would really benefit from inserted B-roll / stock footage.
+- Each B-roll lasts 3-7 seconds.
+- Give:
   - start_time
   - end_time
   - search_query
-- search_query harus singkat, jelas, dan dalam Bahasa Inggris.
-- Jangan taruh B-roll tepat di detik yang sama dengan hook.
-- Hanya tambahkan B-roll jika benar-benar membantu visualisasi isi ucapan.
-- Jika tidak ada momen yang cocok, isi broll_list dengan array kosong [].
+- search_query must be short, clear and in English.
+- Do not place B-roll at the same second as the hook.
+- Only add B-roll if it truly helps visualise what is being said.
+- If there is no suitable moment, set broll_list to an empty array [].
 
-VISUAL B-ROLL HOOK (0-3 DETIK PERTAMA):
-- Berikan 2-5 ide B-Roll pembuka yang kontras, lucu, dramatis, atau memancing rasa penasaran sebelum video asli masuk.
-- Sertakan keyword pencarian YouTube/TikTok untuk editor.
-- Jika ada gestur yang bisa dipakai sebagai hook visual, berikan juga referensinya.
-- Ini disimpan dalam objek 'recommended_visual_broll_hook' dan hanya berlaku sebagai referensi jika editor ingin mencari footage manual untuk 3 detik pertama.
+VISUAL B-ROLL HOOK (FIRST 0-3 SECONDS):
+- Give 2-5 opening B-roll ideas that are contrasting, funny, dramatic or curiosity-provoking before the original video starts.
+- Include YouTube/TikTok search keywords for the editor.
+- If there is a gesture that could serve as a visual hook, reference it too.
+- This is stored in 'recommended_visual_broll_hook' and is only a reference in case the editor wants to find footage manually for the first 3 seconds.
 
 BGM MOOD (BACKGROUND MUSIC):
-- Analisis emosi dan topik dari klip ini.
-- Pilih SATU mood musik latar yang paling cocok dari daftar baku ini: [chill, epic, sad, upbeat, suspense].
-- Pastikan mood selaras dengan cerita. (Contoh: cerita perjuangan berat = sad/epic, cerita lucu/santai = chill/upbeat).
+- Analyse the emotion and topic of this clip.
+- Pick ONE background music mood that fits best from this fixed list: [chill, epic, sad, upbeat, suspense].
+- Make sure the mood matches the story. (Example: hard struggle = sad/epic, funny/relaxed = chill/upbeat).
 
 SLOW CLOSING:
-- end_time HARUS ditambah padding +0.10 sampai +0.85 detik setelah kata terakhir agar ending terasa lega dan tidak kepotong kasar.
+- end_time MUST include padding of +0.10 to +0.85 seconds after the last word so the ending breathes and is not cut off abruptly.
 
-ALASAN PEMILIHAN:
-- Isi field 'alasan' dengan penjelasan singkat mengapa klip ini layak dipilih.
-- Fokus pada nilai emosi, kekuatan hook, potensi retention, shareability, dan payoff.
-- Jelaskan trigger viral utama dari klip ini.
-- Jelaskan kenapa orang kemungkinan akan menonton sampai akhir.
-- Jelaskan kenapa klip ini tetap menarik walau ditonton tanpa konteks video penuh.
+REASON FOR CHOOSING:
+- Fill the 'alasan' field with a short explanation of why this clip deserves to be chosen.
+- Focus on emotional value, hook strength, retention potential, shareability and payoff.
+- Explain the main viral trigger of the clip.
+- Explain why people are likely to watch to the end.
+- Explain why the clip still works without the context of the full video.
 
-ATURAN BAHASA METADATA:
-- title_indonesia tetap wajib diisi untuk kompatibilitas internal / fallback.
-- title_indonesia HARUS dalam Bahasa Indonesia natural dan maksimal 100 karakter.
-- Semua metadata lintas platform utama harus berbahasa Inggris natural.
-- Ini berlaku untuk:
-  - title_inggris
-  - hastag
-  - description_hook
-  - description_context
-  - keyword_tags
-  - tiktok_caption
-- Khusus kebutuhan TikTok versi Indonesia, juga buat:
-  - tiktok_title_id
-  - tiktok_caption_id
-- tiktok_title_id dan tiktok_caption_id HARUS dalam Bahasa Indonesia natural.
-- tiktok_title_id harus lebih deskriptif daripada title_indonesia, boleh lebih panjang dari 100 karakter jika perlu, dan harus menjelaskan isi klip/video dengan jelas.
-- tiktok_caption_id harus natural, informatif, cocok untuk audiens Indonesia, dan boleh sedikit lebih panjang jika itu membantu menjelaskan isi klip.
-- Jangan mencampur Bahasa Indonesia dan Bahasa Inggris di dalam field yang sama.
-- Gunakan English yang natural, ringkas, enak dibaca, dan cocok untuk short-form content.
-- Hindari terjemahan literal yang kaku.
+METADATA LANGUAGE RULES:
+- ALL metadata must be in natural, concise, easy-to-read English suited to short-form content. This includes the fields whose names end in "_indonesia" or "_id"; those names are kept only for compatibility.
+- The audience is English-speaking viewers in Africa (Kenya, Nigeria, South Africa) and worldwide. Keep words simple and avoid slang that only one country would understand.
+- Avoid stiff, literal wording.
 
-METADATA LINTAS PLATFORM:
-Untuk setiap klip, hasilkan metadata berikut:
+CROSS-PLATFORM METADATA:
+For each clip, produce the following metadata:
 
 1. title_indonesia
-- Bahasa Indonesia natural, singkat, dan relevan.
-- Ini hanya untuk kompatibilitas internal / fallback.
-- Maksimal 100 karakter.
+- A short, natural English title (internal fallback, kept for compatibility).
+- Maximum 100 characters.
 
 2. title_inggris
-- Bahasa Inggris natural, kuat, tajam, dan enak dibaca.
-- Ini adalah judul utama untuk metadata platform.
-- Maksimal 100 karakter.
-- Fokus pada 1 ide utama.
-- Relevan dengan isi klip, bukan isi video penuh secara umum.
-- Jangan clickbait murahan.
-- Jangan pakai huruf kapital berlebihan.
-- Hindari tanda baca berlebihan seperti !!! ??? ...
-- Jangan terlalu generik.
+- A strong, sharp, readable English title.
+- This is the main title used on the platforms.
+- Maximum 100 characters.
+- Focus on 1 main idea.
+- Specific to the clip, not the full video in general.
+- No cheap clickbait.
+- No excessive capital letters.
+- Avoid excessive punctuation such as !!! ??? ...
+- Not too generic.
 
 3. hastag
-- Isi dengan 2 sampai 3 hashtag saja dalam satu string.
-- Semua hashtag HARUS dalam Bahasa Inggris.
-- Pisahkan dengan spasi.
-- Harus relevan langsung dengan topik klip.
-- Jangan duplikat.
-- Hindari hashtag terlalu generik seperti #fyp #viral #trending kecuali memang sangat relevan.
-- Gunakan format seperti: #mindset #career #productivity
+- Only 2 to 3 hashtags in one string.
+- All hashtags MUST be in English.
+- Separate them with spaces.
+- They must relate directly to the clip's topic.
+- No duplicates.
+- Avoid overly generic hashtags such as #fyp #viral #trending unless truly relevant.
+- Use a format such as: #mindset #career #productivity
 
 4. description_hook
-- Tepat 1 kalimat.
-- HARUS dalam Bahasa Inggris.
-- Ini adalah kalimat pembuka metadata.
-- Harus singkat, kuat, dan memancing rasa ingin tahu.
-- Jangan clickbait palsu.
+- Exactly 1 sentence, in English.
+- This is the opening sentence of the description.
+- Short, strong and curiosity-provoking.
+- No fake clickbait.
 
 5. description_context
-- Tepat 1 kalimat.
-- HARUS dalam Bahasa Inggris.
-- Menjelaskan konteks utama isi klip secara ringkas.
-- Harus relevan dengan pembicaraan di klip.
+- Exactly 1 sentence, in English.
+- Briefly explains the main context of the clip.
+- Must relate to what is said in the clip.
 
 6. keyword_tags
-- Berisi 5 sampai 8 keyword pendek.
-- HARUS dalam Bahasa Inggris.
-- Bukan hashtag.
-- Harus berupa daftar frasa singkat yang relevan dengan isi klip.
-- Hindari keyword spam.
-- Utamakan keyword yang mungkin benar-benar dicari orang.
-- Field ini terutama untuk kebutuhan metadata YouTube.
+- 5 to 8 short keywords, in English.
+- Not hashtags.
+- A list of short phrases relevant to the clip.
+- Avoid keyword spam.
+- Prefer keywords people actually search for.
+- Mainly used for YouTube metadata.
 
 7. tiktok_title_id
-- Bahasa Indonesia natural.
-- Lebih panjang dan lebih menjelaskan isi video daripada title_indonesia.
-- Tidak perlu dibatasi 100 karakter, tapi tetap harus ringkas, jelas, dan enak dibaca.
-- Harus relevan dengan isi klip, bukan isi video panjang secara umum.
-- Jangan clickbait murahan.
+- A longer English title that explains the video more than title_inggris.
+- No strict 100-character limit, but keep it concise, clear and readable.
+- Specific to the clip, not the full video in general.
+- No cheap clickbait.
 
 8. tiktok_caption_id
-- 1 sampai 2 kalimat.
-- HARUS dalam Bahasa Indonesia.
-- Boleh sedikit lebih panjang daripada caption English jika membantu menjelaskan isi klip.
-- Gaya natural, ringan, dan enak dibaca.
-- Tetap sesuai isi klip.
-- Jangan sekadar copy-paste title.
-- Jangan terlalu formal.
+- 1 to 2 sentences in English.
+- May be a little longer than tiktok_caption if that helps explain the clip.
+- Natural, light and easy to read.
+- True to the clip.
+- Do not just copy the title.
+- Not too formal.
 
 9. tiktok_caption
-- 1 sampai 2 kalimat singkat.
-- HARUS dalam Bahasa Inggris.
-- Gaya lebih natural, ringan, dan conversational.
-- Tetap sesuai isi klip.
-- Jangan sekadar copy-paste title.
-- Jangan terlalu formal.
-- Usahakan tidak lebih dari 140 karakter.
+- 1 to 2 short sentences in English.
+- Natural, light and conversational.
+- True to the clip.
+- Do not just copy the title.
+- Not too formal.
+- Try to stay under 140 characters.
 
-ATURAN KUALITAS METADATA:
-- Semua metadata harus sesuai isi klip, bukan isi video panjang secara umum.
-- Jangan membuat janji yang tidak dibahas di klip.
-- Jangan pakai hiperbola palsu seperti "100% berhasil", "pasti kaya", dll kecuali memang sangat jelas disebutkan.
-- Jika ada angka, frasa kuat, atau statement tajam dari ucapan asli, prioritaskan itu sebagai inspirasi judul/caption.
-- Title, descriptions, dan caption harus saling melengkapi, bukan mengulang kalimat yang sama.
-- Semua field metadata yang dipakai untuk platform harus berbahasa Inggris natural, bukan terjemahan literal yang kaku.
-- Khusus tiktok_title_id dan tiktok_caption_id, gunakan Bahasa Indonesia yang natural, jelas, dan lebih menjelaskan isi klip untuk audiens Indonesia.
+METADATA QUALITY RULES:
+- All metadata must match the clip, not the full video in general.
+- Do not promise anything the clip does not cover.
+- No fake hyperbole such as "100% guaranteed" or "get rich for sure" unless clearly stated.
+- If the original speech has numbers, strong phrases or sharp statements, prioritise them as inspiration for the title/caption.
+- Title, descriptions and caption should complement each other, not repeat the same sentence.
 
-ATURAN OUTPUT:
-- Output HARUS berupa JSON array valid.
-- Jangan beri penjelasan apa pun di luar JSON.
-- Semua field wajib terisi.
-- Jika ragu, prioritaskan akurasi isi klip daripada kreativitas berlebihan.
+OUTPUT RULES:
+- Output MUST be a valid JSON array.
+- Do not give any explanation outside the JSON.
+- Every field must be filled.
+- When unsure, prioritise accuracy to the clip over excessive creativity.
 {_hook_v2_prompt}{_segment_prompt}
 
-STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):
+REQUIRED JSON STRUCTURE (follow these field names exactly):
 [
   {{
     "rank": 1,
@@ -891,7 +866,7 @@ STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):
     ],
     "hook_v2": {{
       "enabled": true,
-      "items": [{{ "start_time": 31.0, "end_time": 32.5, "text": "KATA KUNCI" }}],
+      "items": [{{ "start_time": 31.0, "end_time": 32.5, "text": "KEY WORDS" }}],
       "transition": {{ "type": "white_flash" }}
     }},
     "keep_segments": [
@@ -900,7 +875,7 @@ STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):
     ],
     "title_indonesia": "...",
     "title_inggris": "...",
-    "hastag": "#hastag1 #hastag2",
+    "hastag": "#hashtag1 #hashtag2",
     "description_hook": "...",
     "description_context": "...",
     "keyword_tags": ["tag1", "tag2"],
@@ -912,9 +887,9 @@ STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):
       "tipe_akun": "Creator",
       "akun_tujuan": "Creator.Mereska",
       "confidence": 87,
-      "angle_utama": "Monetisasi konten digital dari niche beauty",
+      "angle_utama": "Making money from digital content in the beauty niche",
       "alasan": "...",
-      "kata_kunci_pendukung": ["affiliate", "monetisasi"],
+      "kata_kunci_pendukung": ["affiliate", "monetization"],
       "bio_akun": "...",
       "alternatif_akun": {{
         "tipe_akun": "Life",
@@ -925,7 +900,7 @@ STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):
   }}
 ]
 
-Transkrip:
+Transcript:
 {transkrip_lengkap}
 """
 
@@ -965,12 +940,12 @@ def analyze_with_ai(transkrip_lengkap: str, cfg) -> list[dict]:
 
     if provider == "nvidia":
         if not cfg.api_key_nvidia:
-            print("⚠️ NVIDIA_API_KEY tidak ditemukan! Mencoba fallback ke Gemini...")
+            print("⚠️ NVIDIA_API_KEY not found. Falling back to Gemini...")
         else:
             try:
                 return analyze_with_nvidia(transkrip_lengkap, cfg)
             except Exception as e:
-                print(f"⚠️ NVIDIA API gagal: {e}. Fallback ke Gemini...")
+                print(f"⚠️ NVIDIA API failed: {e}. Falling back to Gemini...")
 
     return analyze_with_gemini(transkrip_lengkap, cfg)
 

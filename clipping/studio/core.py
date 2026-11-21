@@ -205,11 +205,10 @@ def proses_klip(
     }
 
     print(f"\n{'=' * 70}")
-    print(f"🔥 [Rank {rank}] Memproses clip")
-    print(f"📝 [Judul Indo]   : '{clip.get('title_indonesia', '-')}'")
-    print(f"📝 [Judul Inggris]: '{clip.get('title_inggris', '-')}'")
-    print(f"#️⃣ [Hastag]      : '{clip.get('hastag', '-')}'")
-    print(f"🧠 Encoder aktif  : {video_encoder['name']}")
+    print(f"🔥 [Rank {rank}] Making clip")
+    print(f"📝 [Title]        : '{clip.get('title_inggris', '-')}'")
+    print(f"#️⃣ [Hashtags]     : '{clip.get('hastag', '-')}'")
+    print(f"🧠 Encoder        : {video_encoder['name']}")
     print(f"{'=' * 70}")
 
     typography_plan = clip.get("typography_plan", [])
@@ -254,7 +253,7 @@ def proses_klip(
     broll_list = clip.get("broll_list", [])
     broll_aktif = []
     if cfg.use_broll and broll_list:
-        print(f"   🎥 Mendownload {len(broll_list)} video B-Roll dari Pexels...")
+        print(f"   🎥 Downloading {len(broll_list)} B-roll videos from Pexels...")
         for i, br in enumerate(broll_list):
             q = br.get("search_query", "nature")
             file_broll = f"temp_broll_{rank}_{i}.mp4"
@@ -289,7 +288,7 @@ def proses_klip(
                     if fi_end <= fi_start:
                         break
                     items.append({"start_time": fi_start, "end_time": fi_end, "text": ""})
-                print(f"   ⚠️ [Hook V2] AI tidak memberi items, fallback ke {len(items)} potongan dari hook timing.")
+                print(f"   ⚠️ [Hook V2] The AI gave no items; using {len(items)} cuts from the hook timing instead.")
 
             out_w_v2, out_h_v2 = _get_render_dims(cfg, rasio, source_h=sh)
             flash_dur = getattr(cfg, "white_flash_duration", 0.12)
@@ -354,7 +353,7 @@ def proses_klip(
                 )
                 h_ts_parts.append(trans_ts)
                 lbl = f"Transisi {i+1}" if i < len(items) - 1 else "Transisi akhir"
-                print(f"      ⚡ {lbl} ({trans_type}) berhasil ditambahkan.")
+                print(f"      ⚡ {lbl} ({trans_type}) added.")
 
             # Concat all hook v2 pieces into h_ts
             if h_ts_parts:
@@ -377,7 +376,7 @@ def proses_klip(
         elif aktif_hook:
             get_x_h = None
             if use_split:
-                print("   📸 [Hook] Split-screen render (Custom Hook diabaikan untuk format ini saat ini atau digabung)...")
+                print("   📸 [Hook] Split-screen render (a custom hook is ignored or merged in this format)...")
                 get_x_h = buat_video_split_screen(
                     file_hook_src,
                     h_silent,
@@ -468,7 +467,7 @@ def proses_klip(
                 cmd_h, h_end - h_start, label=f"Rank {rank} Hook FFmpeg"
             )
             if rc_h != 0:
-                raise RuntimeError("FFmpeg hook gagal:\n" + "\n".join(err_h))
+                raise RuntimeError("FFmpeg hook failed:\n" + "\n".join(err_h))
 
         # MAIN
         render_stage = "main"
@@ -618,16 +617,16 @@ def proses_klip(
             
             file_bgm = None
             if aktif_bgm:
-                print(f"   🎵 Mencari file BGM lokal (Mood: {bgm_mood})...")
+                print(f"   🎵 Looking for local background music (mood: {bgm_mood})...")
                 file_bgm = get_local_bgm_file(bgm_mood, getattr(cfg, "bgm_dir", os.path.join(cfg.base_dir, "assets", "bgm")))
                 if not file_bgm and bgm_mood != "chill":
-                    print("   🔄 Fallback mencari BGM chill...")
+                    print("   🔄 Falling back to chill background music...")
                     file_bgm = get_local_bgm_file("chill", getattr(cfg, "bgm_dir", os.path.join(cfg.base_dir, "assets", "bgm")))
                 
                 if file_bgm:
-                    print(f"   ✅ BGM siap: {file_bgm}")
+                    print(f"   ✅ Background music ready: {file_bgm}")
                 else:
-                    print("   ⚠️ Folder BGM kosong atau file mp3 tidak ditemukan. Render lanjut tanpa BGM.")
+                    print("   ⚠️ The music folder is empty or has no mp3 files. Rendering without background music.")
 
             if aktif_bgm and file_bgm:
                 print("   🎵 Applying BGM to segmented clip...")
@@ -720,16 +719,16 @@ def proses_klip(
                 
             file_bgm = None
             if aktif_bgm:
-                print(f"   🎵 Mencari file BGM lokal (Mood: {bgm_mood})...")
+                print(f"   🎵 Looking for local background music (mood: {bgm_mood})...")
                 file_bgm = get_local_bgm_file(bgm_mood, getattr(cfg, "bgm_dir", os.path.join(cfg.base_dir, "assets", "bgm")))
                 if not file_bgm and bgm_mood != "chill":
-                    print("   🔄 Fallback mencari BGM chill...")
+                    print("   🔄 Falling back to chill background music...")
                     file_bgm = get_local_bgm_file("chill", getattr(cfg, "bgm_dir", os.path.join(cfg.base_dir, "assets", "bgm")))
                 
                 if file_bgm:
-                    print(f"   ✅ BGM siap: {file_bgm}")
+                    print(f"   ✅ Background music ready: {file_bgm}")
                 else:
-                    print("   ⚠️ Folder BGM kosong atau file mp3 tidak ditemukan. Render lanjut tanpa BGM.")
+                    print("   ⚠️ The music folder is empty or has no mp3 files. Rendering without background music.")
 
             # --- Subtitle & BGM Encoding Loop (Handles dual output files if needed) ---
             runs = [m_silent] if not dev_dual else [m_silent, m_silent.replace(".ts", "_dev.ts")]
@@ -786,7 +785,7 @@ def proses_klip(
                     cmd_m, m_end - m_start, label=f"Rank {rank} Main FFmpeg{lbl_suffix}"
                 )
                 if rc_m != 0:
-                    raise RuntimeError(f"FFmpeg main{lbl_suffix} gagal:\n" + "\n".join(err_m))
+                    raise RuntimeError(f"FFmpeg main{lbl_suffix} failed:\n" + "\n".join(err_m))
 
         # VOICE-OVER OVER THE MOVING CLIP (overlay mode)
         if vo_overlay:
@@ -825,7 +824,7 @@ def proses_klip(
                     "-vframes", "1", "-q:v", "2", frame_path
                 ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Gagal mengekstrak frame awal untuk VO Intro:\n{e.stderr}")
+                raise RuntimeError(f"Could not extract the first frame for the voice-over intro:\n{e.stderr}")
             
             try:
                 # Dapatkan durasi asli dari mp3 menggunakan ffprobe agar tidak terpotong
@@ -1025,7 +1024,7 @@ def proses_klip(
                 try:
                     subprocess.run(cmd_vo_base, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
                 except subprocess.CalledProcessError as e:
-                    raise RuntimeError(f"FFmpeg VO intro gagal (Rank {rank}):\nCommand: {' '.join(cmd_vo_base)}\nError:\n{e.stderr}")
+                    raise RuntimeError(f"FFmpeg voice-over intro failed (Rank {rank}):\nCommand: {' '.join(cmd_vo_base)}\nError:\n{e.stderr}")
                 
             if os.path.exists(frame_path):
                 os.remove(frame_path)
@@ -1173,12 +1172,12 @@ def proses_klip(
         manifest_item["video_exists"] = os.path.exists(out_vid)
         manifest_item["thumbnail_exists"] = os.path.exists(out_thm)
 
-        print(f"✅ [Rank {rank}] Selesai.")
+        print(f"✅ [Rank {rank}] Done.")
         return manifest_item
 
     except subprocess.CalledProcessError as e:
         _trace_render_failure(e, render_stage, rank)
-        print(f"\n❌ ERROR: FFmpeg gagal. Error: {e}")
+        print(f"\n❌ ERROR: FFmpeg failed. Error: {e}")
         manifest_item["status"] = "failed"
         manifest_item["error"] = str(e)
         manifest_item["video_exists"] = os.path.exists(out_vid)

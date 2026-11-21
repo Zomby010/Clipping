@@ -106,11 +106,11 @@ def run_diarization(
     """
     if not hf_token:
         raise RuntimeError(
-            "HF_TOKEN tidak ditemukan. Pyannote membutuhkan HuggingFace token. "
-            "Set via: export HF_TOKEN='your-token' atau di file .env"
+            "HF_TOKEN not found. Pyannote needs a HuggingFace token. "
+            "Set it with: export HF_TOKEN='your-token' or in the .env file"
         )
 
-    print("🎙️ Memuat model Pyannote speaker-diarization-3.1...")
+    print("🎙️ Loading the Pyannote speaker-diarization-3.1 model...")
 
     from pyannote.audio import Pipeline
 
@@ -134,13 +134,13 @@ def run_diarization(
             import torch
 
             pipeline.to(torch.device("cuda"))
-            print("   ✅ Pyannote menggunakan GPU (CUDA)")
+            print("   ✅ Pyannote is using the GPU (CUDA)")
         else:
-            print("   ℹ️ Pyannote menggunakan CPU")
+            print("   ℹ️ Pyannote is using the CPU")
     except Exception:
-        print("   ℹ️ Pyannote menggunakan CPU")
+        print("   ℹ️ Pyannote is using the CPU")
 
-    print("🎙️ Menjalankan speaker diarization...")
+    print("🎙️ Working out who is speaking (diarization)...")
     if str(num_speakers).lower() == "auto":
         # Gunakan min_speakers dan max_speakers jika tersedia
         kwargs = {}
@@ -177,12 +177,12 @@ def run_diarization(
             )
     except AttributeError as e:
         raise RuntimeError(
-            f"Gagal memproses hasil diarization ({type(diarization)}): {e}. "
-            "Pastikan model pyannote/speaker-diarization-3.1 terinstal dengan benar."
+            f"Could not process the diarization result ({type(diarization)}): {e}. "
+            "Check that pyannote/speaker-diarization-3.1 is installed correctly."
         )
 
     if not raw_segments:
-        raise RuntimeError("Diarization tidak menghasilkan segment apapun.")
+        raise RuntimeError("Diarization produced no segments.")
 
     # Merge adjacent segments from same speaker (gap < 0.5s)
     merged = _merge_adjacent_segments(raw_segments, max_gap=0.5)
@@ -190,7 +190,7 @@ def run_diarization(
     # Get unique speakers
     speakers = sorted(set(s["speaker"] for s in merged))
     print(
-        f"   ✅ Diarization selesai: {len(merged)} segments, {len(speakers)} speakers ({', '.join(speakers)})"
+        f"   ✅ Diarization done: {len(merged)} segments, {len(speakers)} speakers ({', '.join(speakers)})"
     )
 
     return merged

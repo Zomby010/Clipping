@@ -73,7 +73,7 @@ def download_google_font(
         return os.path.exists(path) and os.path.getsize(path) > min_valid_size
 
     if is_valid(file_path):
-        print(f"   ✅ Font '{output_filename}' sudah ada dan valid.")
+        print(f"   ✅ Font '{output_filename}' is already here and valid.")
         return True
 
     headers = {
@@ -89,7 +89,7 @@ def download_google_font(
     for percobaan in range(1, max_retry + 1):
         try:
             print(
-                f"   📥 Mendownload font '{output_filename}'... ({percobaan}/{max_retry})"
+                f"   📥 Downloading font '{output_filename}'... ({percobaan}/{max_retry})"
             )
 
             for p in [temp_path, file_path]:
@@ -110,23 +110,23 @@ def download_google_font(
 
             if not is_valid(temp_path):
                 ukuran = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0
-                raise ValueError(f"file hasil download tidak valid ({ukuran} byte)")
+                raise ValueError(f"the downloaded file is not valid ({ukuran} bytes)")
 
             os.replace(temp_path, file_path)
 
             if is_valid(file_path):
                 print(
-                    f"   ✅ Font '{output_filename}' berhasil diunduh dan terverifikasi."
+                    f"   ✅ Font '{output_filename}' downloaded and checked."
                 )
                 return True
 
             raise FileNotFoundError(
-                f"File final '{output_filename}' tidak valid di {font_dir}"
+                f"The final file '{output_filename}' in {font_dir} is not valid"
             )
 
         except Exception as e:
             print(
-                f"   ⚠️ Gagal download font '{output_filename}' percobaan {percobaan}: {e}"
+                f"   ⚠️ Font download '{output_filename}' failed, attempt {percobaan}: {e}"
             )
 
             for p in [temp_path, file_path]:
@@ -140,7 +140,7 @@ def download_google_font(
             if percobaan < max_retry:
                 time.sleep(1.5)
 
-    print(f"   ❌ Gagal total: font '{output_filename}' setelah {max_retry} percobaan.")
+    print(f"   ❌ Gave up on font '{output_filename}' after {max_retry} attempts.")
     return False
 
 
@@ -222,16 +222,16 @@ def siapkan_font_tipografi(cfg):
     if not (
         ok_utama and os.path.exists(path_utama) and os.path.getsize(path_utama) > 1000
     ):
-        raise RuntimeError(f"Font utama gagal disiapkan: {path_utama}")
+        raise RuntimeError(f"Could not prepare the main font: {path_utama}")
 
     if not (
         ok_khusus
         and os.path.exists(path_khusus)
         and os.path.getsize(path_khusus) > 1000
     ):
-        raise RuntimeError(f"Font khusus gagal disiapkan: {path_khusus}")
+        raise RuntimeError(f"Could not prepare the special font: {path_khusus}")
 
     register_fonts_for_libass(font_dir)
-    print(f"✅ Semua font berhasil disiapkan di: {font_dir}")
+    print(f"✅ All fonts ready in: {font_dir}")
 
 

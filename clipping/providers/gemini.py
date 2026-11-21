@@ -14,7 +14,7 @@ class GeminiProvider:
         from google.genai import types
 
         cfg = self.cfg
-        print(f"[3/3] Menganalisis Top {cfg.jumlah_clip} momen terbaik menggunakan Gemini...")
+        print(f"[3/3] Finding the top {cfg.jumlah_clip} moments with Gemini...")
         client = genai.Client(
             api_key=cfg.api_key_gemini,
             vertexai=False,

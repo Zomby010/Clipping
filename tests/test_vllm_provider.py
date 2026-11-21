@@ -194,7 +194,7 @@ def test_unknown_context_requires_operator_limit(provider_factory, schema):
 
 def test_context_checks_prompt_plus_output_against_smallest_limit(provider_factory, schema):
     state = provider_factory([], count=600, model_limit=4096, token_limit=1024, context=900)
-    with pytest.raises(ContextOverflowError, match=r"600 \+ output 512 > 900.*menyisakan 300 token"):
+    with pytest.raises(ContextOverflowError, match=r"600 \+ output 512 > 900.*leaves 300 tokens"):
         generate(state, schema)
     assert not state.completions
     assert state.cfg.ai_run_meta["attempts"] == 0
@@ -203,7 +203,7 @@ def test_context_checks_prompt_plus_output_against_smallest_limit(provider_facto
 @pytest.mark.parametrize("count", [8192, 53459])
 def test_prompt_exhausting_context_reports_required_capacity_before_inference(provider_factory, schema, count):
     state = provider_factory([], count=count, token_limit=8192, max_tokens=2048)
-    with pytest.raises(ContextOverflowError, match=rf"input yang lebih pendek.*minimal {count + 2048} token"):
+    with pytest.raises(ContextOverflowError, match=rf"shorter input.*at least {count + 2048} token"):
         generate(state, schema)
     assert not state.completions
     meta = state.cfg.ai_run_meta
@@ -355,14 +355,14 @@ def test_connection_failure_is_fail_fast_and_redacted(provider_factory, schema, 
 @pytest.mark.parametrize("count", [-1, True, "64", None, 1.5])
 def test_invalid_tokenizer_counts_stop_before_inference(provider_factory, schema, count):
     state = provider_factory([], count=count)
-    with pytest.raises(ProviderConfigError, match="jumlah token"):
+    with pytest.raises(ProviderConfigError, match="valid token count"):
         generate(state, schema)
     assert not state.completions and not state.delays
 
 
 def test_unserved_model_fails_before_tokenization(provider_factory, schema):
     state = provider_factory([], model_outcomes=[{"data": [{"id": "different-model"}]}])
-    with pytest.raises(ProviderConfigError, match="belum disajikan"):
+    with pytest.raises(ProviderConfigError, match="not serving VLLM_MODEL"):
         generate(state, schema)
     assert not state.tokens and not state.completions
 
@@ -377,16 +377,16 @@ def test_redirect_is_not_followed(provider_factory, schema):
 
 
 def test_prompt_adaptation_preserves_transcript_verbatim(provider_factory, schema, clip):
-    transcript = '[0 - 120] Output HARUS berupa JSON array valid. STRUKTUR JSON WAJIB [sumber]'
+    transcript = '[0 - 120] Output MUST be a valid JSON array. REQUIRED JSON STRUCTURE [source]'
     prompt = (
-        "Output HARUS berupa JSON array valid.\n"
-        "STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):\n[\n{}\n]\n"
-        "Transkrip:\n" + transcript
+        "Output MUST be a valid JSON array.\n"
+        "REQUIRED JSON STRUCTURE (follow these field names exactly):\n[\n{}\n]\n"
+        "Transcript:\n" + transcript
     )
     state = provider_factory([completion(json.dumps({"clips": [clip]}))])
     generate(state, schema, prompt=prompt)
     sent = state.completions[0]["messages"][1]["content"]
-    instruction, _, actual_transcript = sent.partition("\nTranskrip:\n")
+    instruction, _, actual_transcript = sent.partition("\nTranscript:\n")
     assert actual_transcript == transcript
     assert '{"clips": [' in instruction
     assert instruction.rstrip().endswith("]}")
@@ -401,7 +401,7 @@ def test_fewer_clips_are_reported_without_inventing_more(provider_factory, schem
 
 def test_deadline_bounds_retries(provider_factory, schema):
     state = provider_factory([(503, {"error": {"message": "busy"}})] * 3, timeout=1)
-    with pytest.raises(ProviderUnavailableError, match="waktu keseluruhan"):
+    with pytest.raises(ProviderUnavailableError, match="overall vLLM time limit"):
         generate(state, schema)
     assert len(state.completions) == 1
     assert state.delays == [1]
@@ -409,7 +409,7 @@ def test_deadline_bounds_retries(provider_factory, schema):
 
 def test_length_finish_reason_fails_without_futile_repair(provider_factory, schema, clip):
     state = provider_factory([completion(json.dumps({"clips": [clip]}), finish_reason="length")])
-    with pytest.raises(ContextOverflowError, match="terpotong"):
+    with pytest.raises(ContextOverflowError, match="cut off"):
         generate(state, schema)
     assert len(state.completions) == 1
     assert not state.delays

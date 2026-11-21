@@ -11,6 +11,8 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 ## [Unreleased]
 
 ### Changed
+- Everything you see while the tool runs is now in English: progress messages, warnings and errors in the clipping pipeline, providers and render steps.
+- The AI instructions (clip picking and voice-over script) are now written in English, and all titles, captions and descriptions are requested in English for an English-speaking African and worldwide audience. Field names in the JSON stay the same.
 - The downloaded source video and the cached glitch transition now live in `outputs/` instead of the project folder.
 - Voice-over now plays over the moving clip by default (`--voiceover-mode overlay`). The original audio ducks to `--original-volume` (now 0.3) while the narrator talks, and captions show the narrator's words during that window. The previous freeze-frame intro is still available with `--voiceover-mode intro`.
 

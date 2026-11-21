@@ -18,10 +18,10 @@ class NvidiaNimProvider:
         cfg = self.cfg
         from openai import OpenAI
 
-        print(f"[3/3] Menganalisis Top {cfg.jumlah_clip} momen menggunakan NVIDIA ({cfg.nvidia_model})...")
+        print(f"[3/3] Finding the top {cfg.jumlah_clip} moments with NVIDIA ({cfg.nvidia_model})...")
 
         if not cfg.api_key_nvidia:
-            raise ValueError("NVIDIA_API_KEY tidak ditemukan di environment.")
+            raise ValueError("NVIDIA_API_KEY was not found in the environment.")
 
         client = OpenAI(
             base_url="https://integrate.api.nvidia.com/v1",

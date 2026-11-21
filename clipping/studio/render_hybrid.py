@@ -119,7 +119,7 @@ def buat_video_hybrid(
     detector = None
     if cfg.face_detector == "yolo":
         if not os.path.exists(cfg.file_yolo_model):
-            print(f"   📥 Mendownload YOLOv8 Face Model ({cfg.yolo_size})...")
+            print(f"   📥 Downloading the YOLOv8 face model ({cfg.yolo_size})...")
             import urllib.request
 
             urllib.request.urlretrieve(cfg.url_yolo_model, cfg.file_yolo_model)
@@ -168,7 +168,7 @@ def buat_video_hybrid(
     skip_tracking = getattr(cfg, "static_crop", False) and rasio in ["1:1", "3:4", "4:5"]
 
     if skip_tracking:
-        print(f"🧠 {label} - Static Crop aktif (tanpa face tracking)...", flush=True)
+        print(f"🧠 {label} - Static crop on (no face tracking)...", flush=True)
     else:
         print(f"🧠 {label} - Analisa wajah dimulai...", flush=True)
 
@@ -519,9 +519,9 @@ def buat_video_hybrid(
         return_code = writer.wait()
 
         if return_code != 0:
-            raise RuntimeError(f"FFmpeg writer gagal: {stderr_data[-1000:]}")
+            raise RuntimeError(f"FFmpeg writer failed: {stderr_data[-1000:]}")
 
-        print(f"✅ {label} selesai.", flush=True)
+        print(f"✅ {label} done.", flush=True)
 
     finally:
         cap.release()
