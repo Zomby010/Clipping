@@ -278,6 +278,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Number of highlight clips to generate",
     )
     p.add_argument(
+        "--min-length",
+        type=int,
+        default=20,
+        help="Shortest clip the AI may pick, in seconds.",
+    )
+    p.add_argument(
+        "--max-length",
+        type=int,
+        default=179,
+        help="Longest clip the AI may pick, in seconds (60 or less for classic Shorts).",
+    )
+    p.add_argument(
         "--ratio",
         "-r",
         default=PILIHAN_RASIO,
@@ -898,6 +910,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         yt_cookies=args.yt_cookies,
         cleanup_source=args.cleanup_source,
         jumlah_clip=args.clips,
+        min_length=args.min_length,
+        max_length=args.max_length,
         pilihan_rasio=args.ratio,
         download_source_height=args.source_height,
         render_output_height=args.render_height,

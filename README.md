@@ -152,6 +152,23 @@ The **Clipping Studio** is a browser-based dashboard hosted for free on **GitHub
 
 ---
 
+## 🖥️ Clipping Studio (desktop app)
+
+One window instead of command-line flags.
+
+```bash
+sudo apt install python3-tk ffmpeg          # once, on Ubuntu
+bash scripts/install_desktop_app.sh         # adds "Clipping Studio" to the app menu and the Desktop
+python clipping_studio.py                   # or start it from a terminal
+```
+
+- **Make clips**: paste links (one per line), pick the number of clips, clip length (15 to 60 s presets), shape, voice, voice-over style, caption style and reactions, then press **Start**. Progress shows live; **Stop** ends a run. Buttons open My Clips, the reaction folders and the music folders.
+- **All settings**: every option `main.py` has (100+), in plain-English sections with a search box, the help text and the flag name, and a reset button on each line. New command-line options appear here by themselves.
+- **API keys**: Gemini, Pexels, Hugging Face and NVIDIA keys, saved to `.env`.
+- **Profiles**: save a whole set of choices under a name (for example one per channel) and switch with one click. Your settings live in `studio_settings.json`.
+
+The app starts with laptop-friendly choices: speech recognition on the CPU (`small`, `int8`), 3 clips, 15 to 60 seconds, voice-over on.
+
 ## 🚀 Local Quick Start
 
 ```bash

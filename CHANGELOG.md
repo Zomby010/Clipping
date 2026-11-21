@@ -17,6 +17,8 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 - Voice-over now plays over the moving clip by default (`--voiceover-mode overlay`). The original audio ducks to `--original-volume` (now 0.3) while the narrator talks, and captions show the narrator's words during that window. The previous freeze-frame intro is still available with `--voiceover-mode intro`.
 
 ### Added
+- Clipping Studio desktop app (`python clipping_studio.py`, or `bash scripts/install_desktop_app.sh` for an app-menu and Desktop icon on Ubuntu): links, quick choices, Start/Stop with live progress, every option under All settings with search, API keys saved to `.env`, and named profiles.
+- `--min-length` and `--max-length` set how short or long the AI's clips may be (default 20 to 179 seconds).
 - Finished clips are sorted into `My Clips/<date time - title>/` with Videos, Thumbnails, Captions (.srt), Voice-overs (audio + script) and Upload details folders. `--no-library` keeps the old layout; `--library-dir` moves it.
 - `--voiceover-offset` and a per-clip `voiceover_offset` to choose when the narrator starts.
 - Reaction clips: drop short clips into `assets/reactions/<mood>/` (laugh, shock, hype, sad, cringe or your own). The AI marks moments in each clip (`reaction_inserts`), the clip pauses, the reaction plays for about a second with its own sound, and the clip carries on. Never during the voice-over, near the start or end, or closer than 4 seconds apart. `--max-reactions` (2), `--reaction-seconds` (1.2), `--reaction-volume`, `--reactions-dir`, `--no-reactions`.

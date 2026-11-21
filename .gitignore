@@ -9,3 +9,7 @@ __pycache__/
 .env
 .venv/
 venv/
+
+# Clipping Studio app: your own settings and profiles
+studio_settings.json
+studio_settings.json.tmp
