@@ -59,6 +59,7 @@ download_pexels_broll = broll.download_pexels_broll
 crop_center_broll = broll.crop_center_broll
 subtitles = _load_studio_internal_module("subtitles.py", "clipping_studio_subtitles")
 vo_overlay_mod = _load_studio_internal_module("voiceover_overlay.py", "clipping_studio_voiceover_overlay")
+captions_mod = _load_studio_internal_module("captions_export.py", "clipping_studio_captions_export")
 buat_file_ass = subtitles.buat_file_ass
 effects = _load_studio_internal_module("effects.py", "clipping_studio_effects")
 siapkan_glitch_video = effects.siapkan_glitch_video
@@ -511,6 +512,19 @@ def proses_klip(
                 main_segmen = vo_overlay_mod.merge_captions(
                     data_segmen, vo_data["segments"], window, m_start, seg_plan
                 )
+
+        # Data for the tidy "My Clips" folder: caption lines (for a .srt file)
+        # and the voice-over files, recorded in the manifest.
+        _trim_plan = keep_segments if use_segments else None
+        manifest_item["caption_lines"] = captions_mod.caption_lines(
+            main_segmen, m_start, m_end, _trim_plan
+        )
+        manifest_item["main_duration"] = round(
+            vo_overlay_mod.clip_output_duration(m_start, m_end, _trim_plan), 3
+        )
+        if vo_data:
+            manifest_item["voiceover_audio_path"] = vo_data.get("audio_path")
+            manifest_item["voiceover_script"] = vo_data.get("script", "")
 
         if use_segments:
             print(f"   📸 [Main] Rendering {len(keep_segments)} segments (smart trim)...")

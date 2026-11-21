@@ -269,6 +269,24 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
         if not row.get("source_url"):
             row["source_url"] = getattr(cfg, "url_youtube", None)
 
+    # Step 7.5 — Tidy the finished files into "My Clips/<date - title>/"
+    if getattr(cfg, "organize_library", True):
+        from . import library
+        try:
+            run_dir = library.organize_run(render_manifest, cfg)
+            if run_dir:
+                print(f"\n📁 Your finished clips are in: {run_dir}")
+        except Exception as e:
+            print(
+                f"\n⚠️ Could not sort the clips into the 'My Clips' folder ({e}). "
+                f"They are still in {cfg.outputs_dir}."
+            )
+            for row in render_manifest:
+                row.pop("caption_lines", None)
+    else:
+        for row in render_manifest:
+            row.pop("caption_lines", None)
+
     # Step 8 — Save manifest
     manifest_path = os.path.join(cfg.outputs_dir, "render_manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as f:

@@ -71,12 +71,14 @@ def siapkan_glitch_video(rasio, cfg, video_encoder, source_h=1080, custom_dims=N
         out_w, out_h = _get_render_dims(cfg, rasio, source_h=source_h)
 
     # Use dimensions in filename to allow multiple cached versions
-    glitch_ts = f"glitch_ready_{out_w}x{out_h}.ts"
+    # Cached next to the other working files (outputs/), not in the project folder.
+    cache_dir = getattr(cfg, "outputs_dir", None) or "."
+    glitch_ts = os.path.join(cache_dir, f"glitch_ready_{out_w}x{out_h}.ts")
     if os.path.exists(glitch_ts):
         return glitch_ts
 
     # --- Primary: download glitch video from YouTube ---
-    glitch_raw = "glitch_raw.mp4"
+    glitch_raw = os.path.join(cache_dir, "glitch_raw.mp4")
     use_downloaded = False
     if not os.path.exists(glitch_raw):
         try:

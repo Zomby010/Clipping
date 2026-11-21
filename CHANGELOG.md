@@ -11,9 +11,11 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 ## [Unreleased]
 
 ### Changed
+- The downloaded source video and the cached glitch transition now live in `outputs/` instead of the project folder.
 - Voice-over now plays over the moving clip by default (`--voiceover-mode overlay`). The original audio ducks to `--original-volume` (now 0.3) while the narrator talks, and captions show the narrator's words during that window. The previous freeze-frame intro is still available with `--voiceover-mode intro`.
 
 ### Added
+- Finished clips are sorted into `My Clips/<date time - title>/` with Videos, Thumbnails, Captions (.srt), Voice-overs (audio + script) and Upload details folders. `--no-library` keeps the old layout; `--library-dir` moves it.
 - `--voiceover-offset` and a per-clip `voiceover_offset` to choose when the narrator starts.
 
 ## [v1.16.7]
