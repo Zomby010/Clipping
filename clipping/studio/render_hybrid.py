@@ -170,7 +170,7 @@ def buat_video_hybrid(
     if skip_tracking:
         print(f"🧠 {label} - Static crop on (no face tracking)...", flush=True)
     else:
-        print(f"🧠 {label} - Analisa wajah dimulai...", flush=True)
+        print(f"🧠 {label} - Face analysis started...", flush=True)
 
     while current_time <= duration and not skip_tracking:
         cap.set(cv2.CAP_PROP_POS_MSEC, (start_clip + current_time) * 1000)
@@ -225,8 +225,8 @@ def buat_video_hybrid(
         detect_percent = (
             min(100, int((current_time / duration) * 100)) if duration > 0 else 100
         )
-        if detect_percent != last_detect_percent:
-            print(f"⏳ {label} - Analisa wajah: {detect_percent:3d}%", flush=True)
+        if last_detect_percent < 0 or detect_percent >= last_detect_percent + 10 or (detect_percent == 100 and last_detect_percent != 100):  # every 10%
+            print(f"⏳ {label} - Face analysis: {detect_percent:3d}%", flush=True)
             last_detect_percent = detect_percent
 
         current_time += STEP_DETEKSI
@@ -343,7 +343,7 @@ def buat_video_hybrid(
         frame_count = 0
         last_render_percent = -1
 
-        print(f"🎬 {label} - Render frame dimulai...", flush=True)
+        print(f"🎬 {label} - Render frame started...", flush=True)
 
         while True:
             ret, frame_utama = cap.read()
@@ -506,7 +506,7 @@ def buat_video_hybrid(
             render_percent = (
                 min(100, int((t / duration) * 100)) if duration > 0 else 100
             )
-            if render_percent != last_render_percent:
+            if last_render_percent < 0 or render_percent >= last_render_percent + 10 or (render_percent == 100 and last_render_percent != 100):  # every 10%
                 print(
                     f"⏳ {label} - Render frame: {render_percent:3d}% | "
                     f"{format_seconds(t)} / {format_seconds(duration)}",

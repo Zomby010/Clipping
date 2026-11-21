@@ -219,6 +219,19 @@ def generate_commentary_script(transcript_snippet: str, cfg, style="analysis", l
             )
         return script.strip().strip('"').strip()
 
+    if getattr(cfg, "ai_provider", "gemini") == "claude":
+        from clipping.providers import claude
+
+        try:
+            script = claude.ask(cfg, get_commentary_prompt(transcript_snippet, style, language, length),
+                                label="Voice-over")
+            script = str(script).strip().strip('"').strip()
+            if script:
+                print(f"   ✅ Script written by Claude ({len(script)} chars)")
+                return script
+        except Exception as e:  # noqa: BLE001 - Gemini is the backup
+            print(f"   ⚠️ Claude could not write the voice-over ({e}). Trying Gemini...")
+
     print(f"   🧠 Generating {style} commentary script via Gemini ({language}, {length})...")
     
     api_key = cfg.api_key_gemini

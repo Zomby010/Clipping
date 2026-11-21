@@ -25,6 +25,12 @@ if ! "$PY" -c "import tkinter" 2>/dev/null; then
   fi
 fi
 
+if ! command -v deno >/dev/null 2>&1 && [ ! -x "$HOME/.deno/bin/deno" ]; then
+  echo "Tip: yt-dlp works best with a JavaScript runtime for YouTube. Install Deno once with:"
+  echo "  curl -fsSL https://deno.land/install.sh | sh"
+  echo "(then open a new terminal). Downloads still work without it, but some formats may be missing."
+fi
+
 APPS_DIR="$HOME/.local/share/applications"
 mkdir -p "$APPS_DIR"
 DESKTOP_FILE="$APPS_DIR/$APP_ID.desktop"

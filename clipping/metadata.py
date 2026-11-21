@@ -194,7 +194,7 @@ def normalize_and_validate(hasil_json: list[dict], *, report: list[dict] | None 
             warning.append("title_inggris > 100 karakter")
 
         if hashtag_count < 2 or hashtag_count > 3:
-            warning.append("jumlah hashtag bukan 2-3")
+            warning.append("hashtag count is not 2-3")
 
         if not item["description_hook"]:
             warning.append("description_hook is empty")

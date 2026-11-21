@@ -57,7 +57,8 @@ Thumbnails      A cover picture for each Short.
 Captions        The words on screen as a .srt file. YouTube Studio accepts
                 this under Subtitles > Upload file, and you can open it in
                 any text editor to fix a word.
-Voice-overs     The narrator's audio and the script it read.
+Voice-overs     The narrator's audio and the script it read, plus
+                Storyline.txt (the whole story, part by part) when one was written.
 Upload details  Title, description, hashtags and tags, ready to copy.
 
 Source video: {source}
@@ -103,9 +104,17 @@ def _upload_text(item: dict) -> str:
     tags = item.get("youtube_tags_final") or []
     hashtags = item.get("hastag") or ""
     caption = item.get("tiktok_caption_final") or item.get("tiktok_caption") or ""
+    ep = item.get("story_episode") or {}
+    part_line = []
+    if ep.get("mode") == "series" and ep.get("parts", 0) > 1:
+        part_line = ["", f"SERIES: {ep.get('series_title') or ''} | Part {ep.get('part')} of {ep.get('parts')}: "
+                         f"{ep.get('episode_title') or ''}".strip()]
+    elif ep.get("episode_title"):
+        part_line = ["", f"STORY TITLE: {ep['episode_title']}"]
     lines = [
         "TITLE",
         title,
+        *part_line,
         "",
         "DESCRIPTION",
         desc,
@@ -125,7 +134,7 @@ def _upload_text(item: dict) -> str:
     return "\n".join(lines)
 
 
-def organize_run(manifest: list[dict], cfg) -> str | None:
+def organize_run(manifest: list[dict], cfg, story: dict | None = None) -> str | None:
     """
     Gather a run's finished files into ``<library_dir>/<date time - title>/``.
     Updates each manifest item in place (new paths, ``library_dir``) and
@@ -202,6 +211,12 @@ def organize_run(manifest: list[dict], cfg) -> str | None:
     for d in dirs.values():
         if os.path.isdir(d) and not os.listdir(d):
             os.rmdir(d)
+
+    if story and story.get("episodes"):
+        from . import story as story_mod
+        os.makedirs(dirs["voiceovers"], exist_ok=True)
+        with open(os.path.join(dirs["voiceovers"], "Storyline.txt"), "w", encoding="utf-8") as f:
+            f.write(story_mod.as_text(story))
 
     with open(os.path.join(run_dir, "About this folder.txt"), "w", encoding="utf-8") as f:
         f.write(ABOUT_TEXT.format(

@@ -129,7 +129,9 @@ URL_FONT_THUMBNAIL = (
     "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Black.ttf"
 )
 
-URL_GLITCH_VIDEO = "https://www.youtube.com/watch?v=5nBcNRYmjs0"
+# The old glitch video on YouTube went private, so the glitch transition is
+# generated locally with FFmpeg. Set a URL here to download one instead.
+URL_GLITCH_VIDEO = None
 # Tasks FaceDetector in MediaPipe 0.10.21 uses the short-range 896-box graph.
 # A distinct, versioned filename prevents reuse of the incompatible full-range cache.
 MEDIAPIPE_MODEL_FILENAME = "blaze_face_short_range_v1.tflite"
@@ -147,6 +149,14 @@ BGM_DIR = os.path.abspath(os.path.join(BASE_DIR, "assets", "bgm"))
 # Reaction clips: assets/reactions/<mood>/*.mp4 (laugh, shock, hype, ...)
 REACTIONS_DIR = os.path.abspath(os.path.join(BASE_DIR, "assets", "reactions"))
 REACTION_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
+
+
+def env_key(name: str) -> str:
+    """An API key from the environment/.env, or "" when unset or still the .env.sample placeholder."""
+    value = (os.environ.get(name) or "").strip().strip('"').strip("'")
+    if not value or value.startswith("your-") or value.endswith("-here"):
+        return ""
+    return value
 
 
 def list_reaction_moods(reactions_dir):
@@ -175,7 +185,7 @@ VIDEO_SCALE_ALGO = "lanczos"
 RENDER_OUTPUT_HEIGHT = 1080
 
 # AI Provider
-AI_PROVIDER = "gemini"
+AI_PROVIDER = "claude"  # Claude first; Gemini is the automatic backup
 NVIDIA_MODEL = "deepseek-ai/deepseek-v4-pro"
 GEMINI_MODEL = "gemini-3-flash-preview"
 GEMINI_FALLBACK_MODEL = "gemini-2.5-flash"
@@ -483,9 +493,48 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--ai-provider",
-        choices=["gemini", "nvidia", "vllm"],
+        choices=["claude", "gemini", "nvidia", "vllm"],
         default=AI_PROVIDER,
-        help="AI provider for video analysis (gemini, nvidia, or self-hosted vllm).",
+        help="AI that picks the clips and writes the story. claude (default) uses Claude Code on this "
+             "computer or an Anthropic API key, and falls back to Gemini; gemini, nvidia or self-hosted vllm.",
+    )
+    claude_group = p.add_argument_group("Claude and storyline")
+    claude_group.add_argument(
+        "--claude-backend",
+        choices=["auto", "cli", "api"],
+        default="auto",
+        help="How to reach Claude. cli: the Claude Code program you are signed in to (uses your Claude plan). "
+             "api: ANTHROPIC_API_KEY (billed per use). auto: cli if installed, else api.",
+    )
+    claude_group.add_argument(
+        "--claude-model",
+        default="claude-opus-5-5",
+        help="Claude model, e.g. claude-opus-5-5 or claude-sonnet-5-5.",
+    )
+    claude_group.add_argument(
+        "--no-claude-frames",
+        action="store_true",
+        default=False,
+        help="Send Claude only the transcript, not pictures of the video.",
+    )
+    claude_group.add_argument(
+        "--claude-max-sheets",
+        type=int,
+        default=12,
+        help="Most picture sheets (9 frames each) of the whole video Claude looks at when picking clips.",
+    )
+    claude_group.add_argument(
+        "--story-mode",
+        choices=["series", "standalone", "classic"],
+        default="series",
+        help="Voice-over story. series: one continuing story across all Shorts from this video (Part 1, 2, 3...). "
+             "standalone: a different complete story for each Short. classic: the old one-clip commentary.",
+    )
+    claude_group.add_argument(
+        "--story-brief",
+        default="",
+        help="Your direction for the story, e.g. 'A Nairobi hustler narrates a GTA 6 heist crew that keeps "
+             "falling apart'. Leave empty and the AI chooses.",
     )
     p.add_argument(
         "--nvidia-model",
@@ -900,9 +949,9 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
             os.path.join(base_dir, f"face_yolov{args.yolo_size}.pt")
         ),
         # API keys (from env)
-        api_key_gemini=os.environ.get("GOOGLE_API_KEY", ""),
-        hf_token=os.environ.get("HF_TOKEN", ""),
-        pexels_api_key=os.environ.get("PEXELS_API_KEY", ""),
+        api_key_gemini=env_key("GOOGLE_API_KEY"),
+        hf_token=env_key("HF_TOKEN"),
+        pexels_api_key=env_key("PEXELS_API_KEY"),
         # Pengaturan utama
         source_platform="tiktok" if args.tiktok else args.source,
         url_youtube=url_list[0] if len(url_list) == 1 else url_list,
@@ -927,7 +976,11 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         white_flash_duration=args.white_flash_duration,
         no_segment_trim=args.no_segment_trim,
         silence_trim=args.silence_trim,
-        use_broll=not args.no_broll,
+        use_broll=not args.no_broll and bool(env_key("PEXELS_API_KEY")),
+        broll_off_reason=(
+            "turned off" if args.no_broll
+            else ("" if env_key("PEXELS_API_KEY") else "no Pexels API key")
+        ),
         use_hook_glitch=not args.no_hook,
         use_auto_bgm=not args.no_bgm,
         use_karaoke_effect=not args.no_karaoke,
@@ -974,7 +1027,14 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         whisper_compute_type=args.whisper_compute_type,
         # AI
         ai_provider=args.ai_provider,
-        api_key_nvidia=os.environ.get("NVIDIA_API_KEY", ""),
+        claude_backend=args.claude_backend,
+        claude_model=args.claude_model,
+        claude_frames=not args.no_claude_frames,
+        claude_max_sheets=args.claude_max_sheets,
+        story_mode=args.story_mode,
+        story_brief=args.story_brief,
+        api_key_anthropic=env_key("ANTHROPIC_API_KEY"),
+        api_key_nvidia=env_key("NVIDIA_API_KEY"),
         nvidia_model=args.nvidia_model,
         gemini_model=args.gemini_model,
         gemini_fallback_model=args.gemini_fallback_model,

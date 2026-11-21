@@ -95,3 +95,14 @@ def test_env_keys_keep_other_lines(tmp_path):
 def test_clip_length_presets_are_valid():
     for lo, hi in S.CLIP_LENGTHS.values():
         assert 5 <= lo < hi <= 179
+
+
+def test_output_splitter_handles_progress_and_lines():
+    from clipping.gui.settings import OutputSplitter
+    s = OutputSplitter()
+    out = []
+    for chunk in [b"hello\n 10%\r 20%\r", b" 30%\r\ndone\nta", b"il"]:
+        out += s.feed(chunk)
+    out += s.flush()
+    assert out == [("line", "hello"), ("progress", " 10%"), ("progress", " 20%"),
+                   ("line", " 30%"), ("line", "done"), ("line", "tail")]

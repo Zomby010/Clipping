@@ -23,6 +23,16 @@ def validate_analysis_config(cfg, *, probe=False, check_cache=True):
             with VllmProvider.from_cfg(cfg) as local:
                 local.validate()
         return
+    if provider == "claude":
+        from .claude import pick_backend
+        if pick_backend(cfg):
+            return  # Claude is reachable; Gemini (if its key is set) is only the backup.
+        if not getattr(cfg, "api_key_gemini", ""):
+            raise ProviderConfigError(
+                "Claude is not set up (install Claude Code and sign in, or set ANTHROPIC_API_KEY) "
+                "and there is no GOOGLE_API_KEY for the Gemini backup."
+            )
+        return
     if provider not in {"gemini", "nvidia"}:
         raise ProviderConfigError("Unknown AI provider.")
     if voiceover and not getattr(cfg, "api_key_gemini", ""):

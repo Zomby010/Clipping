@@ -152,12 +152,26 @@ The **Clipping Studio** is a browser-based dashboard hosted for free on **GitHub
 
 ---
 
+## 🤖 Claude + Storyline
+
+Claude is the main AI and Gemini is the automatic backup (`--ai-provider claude`, the default).
+
+- **Picking clips:** Claude reads the full transcript **and looks at the video**: up to 12 pictures, each a 3x3 grid of frames from across the video (`--claude-max-sheets`, `--no-claude-frames`). It picks moments where something visibly happens, not only where people talk.
+- **Storyline voice-over:** Claude reads **all the captions** of the source video, then writes our own story that the narrator reads over the moving clip:
+  - `--story-mode series` (default): one continuing story across every Short from the video (Part 1, Part 2...), with the same characters and a hook at the end of each part.
+  - `--story-mode standalone`: a different, complete story for each Short.
+  - `--story-mode classic`: the old one-clip commentary.
+  - `--story-brief "..."`: your direction (characters, angle, tone). Empty = Claude chooses.
+  - Each script is sized to fit its clip. The whole story is saved as `Voice-overs/Storyline.txt` in My Clips, and series parts are labelled in Upload details.
+- **How Claude is reached** (`--claude-backend auto`): first the **Claude Code** program on this computer (install it and sign in once by running `claude`; it uses your Claude plan, no extra bill), otherwise the Anthropic API with `ANTHROPIC_API_KEY` (billed per use; asks fall back to another model if a safety check declines). If neither works, or Claude fails, Gemini does the job. Model: `--claude-model` (default `claude-opus-5-5`).
+
 ## 🖥️ Clipping Studio (desktop app)
 
 One window instead of command-line flags.
 
 ```bash
 sudo apt install python3-tk ffmpeg          # once, on Ubuntu
+curl -fsSL https://deno.land/install.sh | sh   # once: JavaScript runtime yt-dlp uses for YouTube
 bash scripts/install_desktop_app.sh         # adds "Clipping Studio" to the app menu and the Desktop
 python clipping_studio.py                   # or start it from a terminal
 ```

@@ -95,7 +95,7 @@ def siapkan_glitch_video(rasio, cfg, video_encoder, source_h=1080, custom_dims=N
                 ).download([url_glitch])
                 use_downloaded = True
             else:
-                print("⚠️ url_glitch_video is not set, generating a glitch instead...", flush=True)
+                pass  # no download source set: generate the glitch locally below
         except Exception as e:
             print(f"⚠️ Glitch download failed: {e}. Generating one instead...", flush=True)
             # Clean up partial download

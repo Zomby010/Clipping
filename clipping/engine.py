@@ -88,6 +88,9 @@ def _download_gdrive(url: str, output_path: str) -> None:
     gdown.download(download_url, output_path, quiet=False)
 
 
+_YDL_LAST_PRINT = [0.0]
+
+
 def _ydl_progress_hook(d: dict) -> None:
     """Render satu baris progress bar download dari data hook yt-dlp.
 
@@ -97,6 +100,11 @@ def _ydl_progress_hook(d: dict) -> None:
     """
     status = d.get("status")
     if status == "downloading":
+        # At most one update every 2 seconds (yt-dlp calls this many times a second).
+        now = time.monotonic()
+        if now - _YDL_LAST_PRINT[0] < 2.0:
+            return
+        _YDL_LAST_PRINT[0] = now
         total = d.get("total_bytes") or d.get("total_bytes_estimate")
         downloaded = d.get("downloaded_bytes", 0)
         speed = d.get("speed")
@@ -108,14 +116,14 @@ def _ydl_progress_hook(d: dict) -> None:
             filled = int(20 * downloaded / total)
             bar = "█" * filled + " " * (20 - filled)
             print(
-                f"\r      Unduh: {pct:3.0f}%|{bar}| "
+                f"\r      Download: {pct:3.0f}%|{bar}| "
                 f"{downloaded / 1048576:.0f}/{total / 1048576:.0f}MB {spd} ETA {eta_s}   ",
                 end="", flush=True,
             )
         else:
             # Ukuran tidak diketahui (live/streamed manifest) — tampilkan byte + speed saja.
             print(
-                f"\r      Unduh: {downloaded / 1048576:.0f}MB {spd}   ",
+                f"\r      Download: {downloaded / 1048576:.0f}MB {spd}   ",
                 end="", flush=True,
             )
     elif status == "finished":
@@ -134,6 +142,54 @@ def _apply_cookies(opts: dict, cookies: str | bytes | None) -> None:
     else:
         # Browser format: (browser, profile, keyring, container)
         opts["cookiesfrombrowser"] = (cookies, None, None, None)
+
+
+def _save_source_info(output_path: str, info: dict) -> None:
+    """Remember who made the source video, so the AI never claims it as ours."""
+    try:
+        names = [info.get(k) for k in ("channel", "uploader", "creator")]
+        data = {
+            "creators": sorted({str(n).strip() for n in names if n and str(n).strip()}),
+            "title": info.get("title") or "",
+        }
+        with open(os.path.splitext(output_path)[0] + "_source.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except (OSError, TypeError, AttributeError):
+        pass
+
+
+def load_source_creators(video_path: str) -> list[str]:
+    try:
+        with open(os.path.splitext(video_path)[0] + "_source.json", encoding="utf-8") as f:
+            return [c for c in json.load(f).get("creators", []) if c]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def scrub_source_names(clips: list[dict], creators: list[str]) -> int:
+    """Drop tags/hashtags that name the source creator. Returns how many were removed."""
+    keys = {re.sub(r"[^a-z0-9]", "", c.lower()) for c in creators}
+    keys = {k for k in keys if len(k) >= 3}
+    if not keys:
+        return 0
+
+    def named(text: str) -> bool:
+        flat = re.sub(r"[^a-z0-9]", "", str(text).lower())
+        return any(k in flat for k in keys)
+
+    removed = 0
+    for clip in clips:
+        tags = clip.get("keyword_tags")
+        if isinstance(tags, list):
+            kept = [t for t in tags if not named(t)]
+            removed += len(tags) - len(kept)
+            clip["keyword_tags"] = kept
+        if isinstance(clip.get("hastag"), str):
+            words = clip["hastag"].split()
+            kept = [w for w in words if not named(w)]
+            removed += len(words) - len(kept)
+            clip["hastag"] = " ".join(kept)
+    return removed
 
 
 def download_video(
@@ -231,6 +287,7 @@ def download_video(
         # Extra step to verify resolution before downloading
         try:
             info = ydl.extract_info(url, download=False)
+            _save_source_info(output_path, info)
             best_h = info.get("height", "unknown")
             v_codec = info.get("vcodec", "unknown")
             print(f"      ✅ Downloading: {best_h}p (codec: {v_codec})", flush=True)
@@ -421,8 +478,9 @@ def transcribe_video(
     progress = tqdm(
         total=total_dur,
         unit="s",
-        desc="      Transkripsi",
+        desc="      Transcribing",
         bar_format="{desc}: {percentage:3.0f}%|{bar}| {n:.0f}/{total:.0f}s [{elapsed}<{remaining}]",
+        mininterval=3.0,  # fewer updates, so logs don't fill with progress lines
     )
 
     for segment in segments:
@@ -644,6 +702,12 @@ SEGMENT-BASED TRIMMING (KEEP SEGMENTS, REQUIRED):
 - If the whole clip is already tight and engaging, use 1 segment that covers the whole clip.{_silence_hint}
 - Fill the "keep_segments" field as an array of objects (start_time, end_time).
 """
+    _creators = list(getattr(cfg, "source_creators", []) or []) if cfg else []
+    _creator_rule = (
+        f" The original creator here is: {', '.join(_creators)}. Do not use that name anywhere in the metadata."
+        if _creators else ""
+    )
+
     # Build the reaction-clip prompt section (short pre-saved reactions cut in)
     _reaction_moods = list(getattr(cfg, "reaction_moods", []) or []) if cfg else []
     if _reaction_moods:
@@ -866,6 +930,8 @@ For each clip, produce the following metadata:
 - Try to stay under 140 characters.
 
 METADATA QUALITY RULES:
+- We are a separate channel clipping someone else's video. Never write as if we made the original video or did what happens in it: no "we tried", "I built", "our setup", "my run". Describe it in the third person ("He tries...", "This player...") or through our own story.
+- Never put the original creator's or channel's name, or any other creator's name, in titles, hashtags or keyword_tags.{_creator_rule}
 - All metadata must match the clip, not the full video in general.
 - Do not promise anything the clip does not cover.
 - No fake hyperbole such as "100% guaranteed" or "get rich for sure" unless clearly stated.
@@ -962,12 +1028,61 @@ def analyze_with_vllm(transkrip_lengkap: str, cfg) -> list[dict]:
         )
 
 
+def analyze_with_claude(transkrip_lengkap: str, cfg) -> list[dict]:
+    """Claude picks the clips from the transcript AND pictures of the video."""
+    from clipping import frames
+    from clipping.providers import claude
+    from clipping.providers.schema import build_clips_schema
+    from clipping.providers.validation import validate_clips
+
+    prompt = get_analysis_prompt(transkrip_lengkap, cfg.jumlah_clip, cfg.durasi_hook, cfg=cfg)
+    video = getattr(cfg, "file_video_asli", "")
+    source_end = frames.probe_duration(video) if video and os.path.exists(video) else None
+    sheets = []
+    if getattr(cfg, "claude_frames", True) and source_end:
+        sheets = frames.make_sheets(
+            video, os.path.join(cfg.outputs_dir, "claude_frames"),
+            end=source_end, max_sheets=int(getattr(cfg, "claude_max_sheets", 12)), prefix="video",
+        )
+    if sheets:
+        prompt = (
+            "You can SEE the video: the pictures are contact sheets of frames from it.\n"
+            f"{frames.describe_sheets(sheets)}\n"
+            "Use them with the transcript: prefer moments where something visibly happens "
+            "(action, crashes, chases, reactions, goals), not only moments where people talk. "
+            "For gameplay with little talking, the pictures matter more than the words.\n\n"
+            + prompt
+        )
+    clips = claude.ask(cfg, prompt, schema=build_clips_schema(TARGET_ACCOUNTS),
+                       images=[s["path"] for s in sheets], label="Clips")
+    if not isinstance(clips, list):
+        raise ValueError("Claude did not return a list of clips.")
+    if source_end:
+        lo, hi = clip_length_range(cfg)
+        validate_clips(clips, source_end=source_end + 1.0, requested_clips=cfg.jumlah_clip,
+                       min_duration=max(5, lo - 3), max_duration=hi + 3)
+    cfg.ai_run_meta = {
+        "actual_provider": f"claude-{claude.pick_backend(cfg)}",
+        "model": getattr(cfg, "claude_model", None) or claude.DEFAULT_MODEL,
+        "status": "completed", "frames_sent": len(sheets),
+    }
+    print(f"✅ Claude picked {len(clips)} clip(s).")
+    return clips
+
+
 def analyze_with_ai(transkrip_lengkap: str, cfg) -> list[dict]:
-    """Dispatch analysis; retain legacy NVIDIA-to-Gemini fallback only."""
+    """Dispatch analysis; Claude and NVIDIA fall back to Gemini."""
     cfg.ai_run_meta = None
     provider = getattr(cfg, "ai_provider", "gemini")
     if provider == "vllm":
         return analyze_with_vllm(transkrip_lengkap, cfg)
+
+    if provider == "claude":
+        try:
+            return analyze_with_claude(transkrip_lengkap, cfg)
+        except Exception as e:
+            cfg.ai_run_meta = None
+            print(f"⚠️ Claude could not pick the clips ({e}). Falling back to Gemini...")
 
     if provider == "nvidia":
         if not cfg.api_key_nvidia:

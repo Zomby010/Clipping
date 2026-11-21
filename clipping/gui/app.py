@@ -83,6 +83,7 @@ class StudioApp:
         self.rows: list[tuple[S.Field, ttk.Frame, ttk.LabelFrame]] = []
         self.proc: subprocess.Popen | None = None
         self.log_queue: queue.Queue = queue.Queue()
+        self._progress_open = False
 
         root.title(APP_NAME)
         root.geometry("1040x780")
@@ -108,7 +109,8 @@ class StudioApp:
         root.after(120, self._drain_log)
         if not self._has_gemini_key():
             root.after(400, lambda: self._log(
-                "Welcome! First add your Gemini API key in the 'API keys' tab, then paste a video link and press Start.\n"
+                "Welcome! Claude does the AI work when Claude Code is installed and signed in on this computer. "
+                "Add a Gemini key in the 'API keys' tab as the backup, then paste a video link and press Start.\n"
             ))
 
     # ------------------------------------------------------------------ look
@@ -250,8 +252,17 @@ class StudioApp:
         cell(1, 3, "Most reactions per clip",
              lambda p: ttk.Spinbox(p, from_=0, to=6, textvariable=self.vars["max_reactions"], width=6))
 
+        cell(2, 0, "Story", lambda p: ttk.Combobox(
+            p, textvariable=self.vars["story_mode"], state="readonly",
+            values=self.by_dest["story_mode"].choices))
+        brief_box = ttk.Frame(quick, style="Card.TFrame")
+        brief_box.grid(row=2, column=1, columnspan=3, sticky="ew", padx=6, pady=5)
+        ttk.Label(brief_box, text="Story direction (optional: who, what, the angle)",
+                  style="Card.TLabel").pack(anchor="w")
+        ttk.Entry(brief_box, textvariable=self.vars["story_brief"]).pack(fill="x", pady=(2, 0))
+
         checks = ttk.Frame(quick, style="Card.TFrame")
-        checks.grid(row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
+        checks.grid(row=3, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
         for i, dest in enumerate(("voiceover", "no_reactions", "no_bgm", "no_subs",
                                   "no_broll", "no_hook", "watermark", "cleanup_source")):
             ttk.Checkbutton(checks, text=self.by_dest[dest].label, variable=self.vars[dest],
@@ -465,6 +476,11 @@ class StudioApp:
         S.write_env(updates)
         messagebox.showinfo(APP_NAME, "Keys saved.")
 
+    def _claude_ready(self) -> bool:
+        import shutil
+        key = S.read_env().get("ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+        return bool(shutil.which("claude")) or not S.is_placeholder(key)
+
     def _has_gemini_key(self) -> bool:
         return not S.is_placeholder(S.read_env().get("GOOGLE_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", ""))
 
@@ -510,22 +526,34 @@ class StudioApp:
         except S.SettingError as e:
             messagebox.showwarning(APP_NAME, str(e))
             return
-        if values.get("ai_provider", "gemini") == "gemini" and not values.get("load_gemini_json") \
-                and not self._has_gemini_key():
-            messagebox.showwarning(APP_NAME, "Add your Gemini API key first (API keys tab).")
-            self.tabs.select(self.tab_keys)
-            return
+        provider = values.get("ai_provider", "claude")
+        if not values.get("load_gemini_json"):
+            if provider == "gemini" and not self._has_gemini_key():
+                messagebox.showwarning(APP_NAME, "Add your Gemini API key first (API keys tab).")
+                self.tabs.select(self.tab_keys)
+                return
+            if provider == "claude" and not self._claude_ready() and not self._has_gemini_key():
+                messagebox.showwarning(
+                    APP_NAME,
+                    "Claude isn't set up on this computer yet and there is no Gemini key for backup.\n\n"
+                    "Install Claude Code and sign in (run 'claude' once in a terminal), "
+                    "or add a key in the API keys tab.")
+                self.tabs.select(self.tab_keys)
+                return
+        note = ""
+        if provider == "claude" and not values.get("load_gemini_json") and not self._claude_ready():
+            note = "Claude isn't set up on this computer, so Gemini will do the AI work this time.\n\n"
         self.data["links"] = "\n".join(urls)
         self.save()
 
         self._clear_log()
         shown = " ".join(f'"{c}"' if " " in c else c for c in cmd[2:])
-        self._log(f"$ python {shown}\n\n")
+        self._log(f"$ python {shown}\n\n" + note)
         env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
         try:
             self.proc = subprocess.Popen(
                 cmd, cwd=S.REPO_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding="utf-8", errors="replace", bufsize=1,
+                bufsize=0,
                 start_new_session=(os.name == "posix"),
             )
         except OSError as e:
@@ -539,8 +567,15 @@ class StudioApp:
         self.progress.start(12)
 
     def _reader(self, proc):
-        for line in proc.stdout:
-            self.log_queue.put(line)
+        splitter = S.OutputSplitter()
+        while True:
+            chunk = proc.stdout.read1(65536) if hasattr(proc.stdout, "read1") else proc.stdout.read(4096)
+            if not chunk:
+                break
+            for item in splitter.feed(chunk):
+                self.log_queue.put(item)
+        for item in splitter.flush():
+            self.log_queue.put(item)
         proc.wait()
         self.log_queue.put(("__done__", proc.returncode))
 
@@ -577,6 +612,16 @@ class StudioApp:
                 item = self.log_queue.get_nowait()
                 if isinstance(item, tuple) and item and item[0] == "__done__":
                     self._finished(item[1])
+                elif isinstance(item, tuple) and item[0] == "progress":
+                    if item[1].strip():
+                        self._log_progress(item[1])
+                elif isinstance(item, tuple) and item[0] == "line":
+                    if self._progress_open:
+                        self._log_progress(item[1])
+                        self._progress_open = False
+                        self._log("\n")
+                    else:
+                        self._log(item[1] + "\n")
                 else:
                     self._log(item)
         except queue.Empty:
@@ -593,7 +638,21 @@ class StudioApp:
         self.log.see("end")
         self.log.configure(state="disabled")
 
+    def _log_progress(self, text: str):
+        """Show a redrawing progress bar on one line that updates in place."""
+        self.log.configure(state="normal")
+        if self._progress_open:
+            self.log.delete("end-1c linestart", "end-1c")
+        elif self.log.get("end-2c", "end-1c") not in ("", "\n"):
+            self.log.insert("end", "\n")
+        self.log.insert("end", text.strip())
+        self._progress_open = True
+        self.log.see("end")
+        self.log.configure(state="disabled")
+        self.status_var.set(text.strip()[:110])
+
     def _clear_log(self):
+        self._progress_open = False
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")

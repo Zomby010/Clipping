@@ -296,7 +296,7 @@ def run_ffmpeg_with_progress(ffmpeg_cmd, total_duration, label="Render"):
         Tuple `(return_code, recent_errors)` where `recent_errors` contains
         the latest non-progress stderr lines.
     """
-    print(f"🚀 {label} dimulai...", flush=True)
+    print(f"🚀 {label} started...", flush=True)
 
     process = subprocess.Popen(
         ffmpeg_cmd,
@@ -330,7 +330,7 @@ def run_ffmpeg_with_progress(ffmpeg_cmd, total_duration, label="Render"):
                     else 0
                 )
 
-                if percent != last_percent:
+                if last_percent < 0 or percent >= last_percent + 10 or (percent == 100 and last_percent != 100):  # every 10%
                     print(
                         f"⏳ {label}: {percent:3d}% | "
                         f"{format_seconds(current_time)} / {format_seconds(total_duration)}",
