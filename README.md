@@ -436,9 +436,9 @@ Prevent YouTube copyright/reused content strikes by turning raw clips into **ori
 When you pass the `--voiceover` flag, the pipeline will:
 1. Generate a sharp, opinionated analysis script using **Gemini AI** based on the clip's specific transcript.
 2. Synthesize the script into natural-sounding speech using **edge-tts** (free, no GPU required).
-3. **Duck** the original video's audio down to 15% volume and overlay the AI voice-over at 100% volume.
-4. **Override** the burned-in karaoke subtitles so they display the AI narrator's words instead of the original video transcript.
-5. **Visual Enhancements**: Displays a relaxed audio spectrum visualizer and a premium, slow-moving ambient edge glow around the freeze-frame intro.
+3. **Play the voice-over while the clip keeps moving** (default `--voiceover-mode overlay`): the narrator starts `--voiceover-offset` seconds (default 0.5) into the main clip, and the original audio fades down to 30% while the narrator talks, then back up.
+4. **Override** the burned-in karaoke subtitles while the narrator talks so they show the narrator's words; the creator's words show the rest of the time.
+5. **Optional intro mode** (`--voiceover-mode intro`): the older behaviour, a dimmed freeze frame with an audio spectrum visualizer and edge glow that plays the voice-over before the clip starts.
 
 **Example Usage:**
 ```bash
@@ -455,7 +455,9 @@ python main.py --url "VIDEO_URL" --voiceover --voiceover-lang id --voiceover-voi
 - `--voiceover-style`: `analysis` (default), `reaction`, `lesson`, or `summary`.
 - `--voiceover-length`: Length of the script (`short` [default: 5-15s], `normal` [20-40s], `long` [40-60s]).
 - `--voiceover-volume`: Volume of narrator (default 1.0).
-- `--original-volume`: Volume of ducked video audio (default 0.15).
+- `--original-volume`: Volume of the video's own audio while the narrator talks (default 0.3).
+- `--voiceover-mode`: `overlay` (default, the clip keeps playing under the voice) or `intro` (freeze-frame card before the clip).
+- `--voiceover-offset`: Seconds into the main clip before the narrator starts (default 0.5). A clip plan can set its own `voiceover_offset`.
 - `--edge-glow`: Apply the ambient edge glow effect to the **entire** video, instead of just the voice-over intro.
 - `--edge-glow-mode`: Edge glow strategy (`default`, `smooth` [default], or `full`). `smooth` mathematically adjusts speed to remove stuttering in loops.
 

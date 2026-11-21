@@ -675,8 +675,21 @@ def _build_parser() -> argparse.ArgumentParser:
     vo_group.add_argument(
         "--original-volume",
         type=float,
-        default=0.15,
-        help="Volume of the original video audio when voice-over is active.",
+        default=0.3,
+        help="Volume of the original video audio while the voice-over is talking (0.3 = 30%%).",
+    )
+    vo_group.add_argument(
+        "--voiceover-mode",
+        choices=["overlay", "intro"],
+        default="overlay",
+        help="overlay (default): the voice-over plays while the clip keeps moving, game audio ducked underneath. "
+             "intro: old behaviour, a frozen frame with an equalizer plays the voice-over before the clip starts.",
+    )
+    vo_group.add_argument(
+        "--voiceover-offset",
+        type=float,
+        default=0.5,
+        help="Seconds into the main clip before the voice-over starts (overlay mode). A clip's own 'voiceover_offset' wins.",
     )
     vo_group.add_argument(
         "--edge-glow",
@@ -920,6 +933,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         voiceover_length=args.voiceover_length,
         voiceover_volume=args.voiceover_volume,
         original_volume=args.original_volume,
+        voiceover_mode=args.voiceover_mode,
+        voiceover_offset=args.voiceover_offset,
         edge_glow=args.edge_glow,
         edge_glow_mode=args.edge_glow_mode,
         # Watermark

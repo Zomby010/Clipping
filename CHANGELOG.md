@@ -8,6 +8,14 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 - **Patch (x.y.Z)**: Incremented for backward-compatible bug fixes or minor patches.
 
 
+## [Unreleased]
+
+### Changed
+- Voice-over now plays over the moving clip by default (`--voiceover-mode overlay`). The original audio ducks to `--original-volume` (now 0.3) while the narrator talks, and captions show the narrator's words during that window. The previous freeze-frame intro is still available with `--voiceover-mode intro`.
+
+### Added
+- `--voiceover-offset` and a per-clip `voiceover_offset` to choose when the narrator starts.
+
 ## [v1.16.7]
 
 ### Added
