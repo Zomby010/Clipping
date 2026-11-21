@@ -17,7 +17,7 @@ def test_optional_warning_report_preserves_existing_normalized_output():
     actual = normalize_and_validate(deepcopy(clips), report=report)
     assert actual == expected
     assert len(report) == 1
-    assert "title_inggris kosong" in report[0]["warnings"]
+    assert "title_inggris is empty" in report[0]["warnings"]
     assert "_warnings_temp" not in actual[0]
 
 

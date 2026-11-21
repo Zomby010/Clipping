@@ -58,7 +58,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
 
     import glob
 
-    # Mencari file json3 apapun (karena bahasanya bisa .id.json3 atau .en.json3)
+    # Find any json3 file (the language can be .id.json3 or .en.json3)
     json3_files = glob.glob(cfg.file_video_asli.replace(".mp4", ".*.json3"))
     file_json3 = json3_files[0] if json3_files else None
 
@@ -74,7 +74,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
             )
             if transkrip_lengkap and data_segmen:
                 print(
-                    f"✅ Berhasil memparsing subtitle dari YouTube ({os.path.basename(file_json3)}), melewati proses Whisper."
+                    f"✅ Read the YouTube subtitles ({os.path.basename(file_json3)}), skipping Whisper."
                 )
 
     if not transkrip_lengkap or not data_segmen:
@@ -91,7 +91,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
     gemini_output_path = os.path.join(cfg.outputs_dir, "gemini_response.json")
     
     if getattr(cfg, "load_gemini_json", False) and os.path.exists(gemini_output_path):
-        print(f"\n🔄 [3/3] Memuat data AI ({cfg.ai_provider}) dari file lokal: {gemini_output_path}")
+        print(f"\n🔄 [3/3] Loading the saved AI answer ({cfg.ai_provider}) from: {gemini_output_path}")
         with open(gemini_output_path, "r", encoding="utf-8") as f:
             hasil_json = json.load(f)
         save_run_metadata(cfg, cached=True)
@@ -104,13 +104,13 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
                     save_run_metadata(cfg)
                 except (OSError, TypeError, ValueError):
                     # A diagnostic write must not hide the inference failure.
-                    print("[AI] Metadata kegagalan tidak dapat disimpan.")
+                    print("[AI] Could not save the failure details.")
             raise
         
         # Save raw gemini json for future loading/reproduction
         with open(gemini_output_path, "w", encoding="utf-8") as f:
             json.dump(hasil_json, f, indent=4, ensure_ascii=False)
-        print(f"💾 Raw AI response tersimpan di: {gemini_output_path}")
+        print(f"💾 AI answer saved to: {gemini_output_path}")
         save_run_metadata(cfg)
 
     # Step 4 — Metadata normalisation
@@ -132,7 +132,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
                 if getattr(cfg, "use_split_screen", False)
                 else "Camera-Switch"
             )
-            print(f"\n🎙️ [{mode_label}] Menjalankan speaker diarization...")
+            print(f"\n🎙️ [{mode_label}] Working out who is speaking (diarization)...")
             audio_path = cfg.file_video_asli.replace(".mp4", "_audio.wav")
             diarization_mod.extract_audio(cfg.file_video_asli, audio_path)
             num_speakers_arg = getattr(cfg, "diarization_num_speakers", 2)
@@ -146,7 +146,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
                 num_speakers_arg = "auto"
                 min_spk = max(1, max_faces)
                 max_spk = min_spk + 2
-                print(f"   ℹ️ Instruksi Pyannote: {min_spk} hingga {max_spk} speaker.")
+                print(f"   ℹ️ Pyannote: {min_spk} to {max_spk} speakers.")
 
             diarization_data = diarization_mod.run_diarization(
                 audio_path,
@@ -159,8 +159,8 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
         except Exception as e:
-            print(f"⚠️ Diarization gagal: {e}")
-            print("   Fallback ke mode render biasa (tanpa split-screen).")
+            print(f"⚠️ Diarization failed: {e}")
+            print("   Falling back to the normal render (no split-screen).")
             diarization_data = None
 
     # Step 6 — Video encoder & glitch
@@ -179,7 +179,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
 
     file_glitch_ts = None
     if cfg.use_hook_glitch:
-        print("⚙️ Menyiapkan Video Glitch Transisi...")
+        print("⚙️ Preparing the glitch transition video...")
         
         # Get source dimensions for proper glitch scaling
         import cv2
@@ -196,12 +196,12 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
 
     custom_hook_path = None
     if getattr(cfg, "hook_source", None):
-        print("\n🎣 Mengunduh sumber klip Hook kustom...")
+        print("\n🎣 Downloading the custom hook clip...")
         custom_hook_path = hook_manager.download_custom_hook(cfg)
 
     # Step 5.5 — Generate Voice-Over (if enabled)
     if getattr(cfg, "voiceover", False):
-        print(f"\n🎙️ Meng-generate Voice-Over untuk {len(hasil_json)} klip...")
+        print(f"\n🎙️ Making voice-overs for {len(hasil_json)} clip(s)...")
         for klip in hasil_json:
             try:
                 # 1. Generate commentary script from snippet
@@ -243,7 +243,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
                         }
 
             except Exception as e:
-                print(f"   ⚠️ Gagal generate voice-over untuk Rank {klip['rank']}: {e}")
+                print(f"   ⚠️ Could not make the voice-over for Rank {klip['rank']}: {e}")
 
     for klip in sorted(hasil_json, key=lambda x: x["rank"]):
         
@@ -269,13 +269,31 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
         if not row.get("source_url"):
             row["source_url"] = getattr(cfg, "url_youtube", None)
 
+    # Step 7.5 — Tidy the finished files into "My Clips/<date - title>/"
+    if getattr(cfg, "organize_library", True):
+        from . import library
+        try:
+            run_dir = library.organize_run(render_manifest, cfg)
+            if run_dir:
+                print(f"\n📁 Your finished clips are in: {run_dir}")
+        except Exception as e:
+            print(
+                f"\n⚠️ Could not sort the clips into the 'My Clips' folder ({e}). "
+                f"They are still in {cfg.outputs_dir}."
+            )
+            for row in render_manifest:
+                row.pop("caption_lines", None)
+    else:
+        for row in render_manifest:
+            row.pop("caption_lines", None)
+
     # Step 8 — Save manifest
     manifest_path = os.path.join(cfg.outputs_dir, "render_manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(render_manifest, f, ensure_ascii=False, indent=2)
 
     print(
-        f"\n💾 Render manifest disimpan ke {manifest_path} ({len(render_manifest)} item)"
+        f"\n💾 Render manifest saved to {manifest_path} ({len(render_manifest)} item)"
     )
 
 

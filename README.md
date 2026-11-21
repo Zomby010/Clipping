@@ -635,14 +635,24 @@ graph LR
 
 ## 📤 Output
 
-For each clip, the pipeline creates an `outputs/` directory and generates:
+After each run the finished files are sorted into one folder per run under `My Clips/` (next to `main.py`). Every clip has the same number and name in each sub-folder:
 
-| File | Description |
-|---|---|
-| `outputs/highlight_rank_N_ready.mp4` | Final rendered clip with subtitles, B-roll, BGM |
-| `outputs/thumbnail_rank_N.jpg` | Auto-generated thumbnail with title text |
-| `outputs/render_manifest.json` | Manifest with metadata for all clips |
-| `outputs/metadata_preview.json` | Gemini-generated metadata (titles, tags, captions) |
+```
+My Clips/
+  2026-11-21 13-05 - Heist goes wrong on the bridge/
+    Videos/          1 - Heist goes wrong on the bridge.mp4
+    Thumbnails/      1 - Heist goes wrong on the bridge.jpg
+    Captions/        1 - Heist goes wrong on the bridge.srt
+    Voice-overs/     1 - Heist goes wrong on the bridge.mp3
+                     1 - Heist goes wrong on the bridge (script).txt
+    Upload details/  1 - Heist goes wrong on the bridge.txt
+    About this folder.txt
+```
+
+- **Captions** are also burned into the video; the `.srt` copy can be uploaded in YouTube Studio (Subtitles > Upload file) or edited in any text editor.
+- **Upload details** hold the title, description, hashtags and tags, ready to copy.
+- `outputs/` keeps the working files (downloaded source video, AI answers, `render_manifest.json`). The manifest points at the files in `My Clips/`, so the YouTube and Facebook uploaders keep working.
+- Use `--no-library` to leave everything in `outputs/` as before, or `--library-dir PATH` to put `My Clips` somewhere else.
 
 ## 🎵 Font Styles
 

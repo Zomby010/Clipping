@@ -128,7 +128,7 @@ def main():
     # ── Single URL Mode (backward-compatible) ────────────────────────
     if not is_batch:
         _run_single_url(cfg, url_list[0], version)
-        print("\n✅ Selesai! Semua klip telah dirender.")
+        print("\n✅ Done! All clips have been rendered.")
         return
 
     # ── Batch Multi-URL Mode ─────────────────────────────────────────
@@ -206,7 +206,7 @@ def main():
                 "duration_seconds": round(elapsed, 1),
                 "manifest": manifest,
             })
-            print(f"\n✅ [{idx + 1}/{total}] Selesai — {clip_count} clip(s) rendered in {elapsed:.0f}s")
+            print(f"\n✅ [{idx + 1}/{total}] Done: {clip_count} clip(s) rendered in {elapsed:.0f}s")
 
         except Exception as e:
             elapsed = time.time() - t_start
@@ -222,8 +222,8 @@ def main():
                 "duration_seconds": round(elapsed, 1),
                 "manifest": None,
             })
-            print(f"\n❌ [{idx + 1}/{total}] GAGAL — {error_msg}")
-            print(f"   ⏭️ Melanjutkan ke URL berikutnya...")
+            print(f"\n❌ [{idx + 1}/{total}] FAILED: {error_msg}")
+            print(f"   ⏭️ Moving on to the next link...")
 
     # ── Batch Summary ────────────────────────────────────────────────
     total_elapsed = time.time() - t_batch_start

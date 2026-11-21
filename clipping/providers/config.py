@@ -45,7 +45,7 @@ def normalize_base_url(value):
         root = urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
         return root, root + "/v1"
     except (TypeError, ValueError):
-        raise ProviderConfigError("VLLM_BASE_URL harus URL http/https tanpa credentials/query; target metadata/link-local tidak diizinkan.") from None
+        raise ProviderConfigError("VLLM_BASE_URL must be an http/https URL without credentials or a query; metadata/link-local targets are not allowed.") from None
 
 
 def _positive(value, name, *, integer=True):
@@ -59,7 +59,7 @@ def _positive(value, name, *, integer=True):
             raise ValueError
         return result
     except (TypeError, ValueError, OverflowError):
-        raise ProviderConfigError(f"{name} harus angka positif{' bulat' if integer else ''}.") from None
+        raise ProviderConfigError(f"{name} must be a positive{' whole' if integer else ''} number.") from None
 
 
 def vllm_config_values(values=None, environ=None):
@@ -72,7 +72,7 @@ def vllm_config_values(values=None, environ=None):
 
     model = pick("vllm_model", "VLLM_MODEL", DEFAULT_VLLM_MODEL)
     if not isinstance(model, str) or not model.strip() or len(model) > 256 or any(ord(c) < 33 for c in model):
-        raise ProviderConfigError("VLLM_MODEL harus nama/alias model served yang valid (maksimum 256 karakter).")
+        raise ProviderConfigError("VLLM_MODEL must be a valid served model name or alias (at most 256 characters).")
     root, _ = normalize_base_url(pick("vllm_base_url", "VLLM_BASE_URL", DEFAULT_VLLM_BASE_URL))
     context = pick("vllm_context_limit", "VLLM_CONTEXT_LIMIT", None)
     return dict(

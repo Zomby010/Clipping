@@ -679,6 +679,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Volume of the original video audio while the voice-over is talking (0.3 = 30%%).",
     )
     vo_group.add_argument(
+        "--no-library",
+        action="store_true",
+        default=False,
+        help="Leave finished clips in outputs/ instead of sorting them into 'My Clips/<date - title>/' "
+             "(Videos, Thumbnails, Captions, Voice-overs, Upload details).",
+    )
+    vo_group.add_argument(
+        "--library-dir",
+        default=None,
+        help="Where the 'My Clips' folders go (default: a 'My Clips' folder next to main.py).",
+    )
+    vo_group.add_argument(
         "--voiceover-mode",
         choices=["overlay", "intro"],
         default="overlay",
@@ -781,23 +793,23 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
     # Validate watermark args
     if args.watermark:
         if not args.text and not args.image:
-            parser.error("--watermark membutuhkan --text atau --image.")
+            parser.error("--watermark needs --text or --image.")
         if not (1 <= args.opacity <= 100):
-            parser.error(f"--opacity harus antara 1-100, diberikan: {args.opacity}")
+            parser.error(f"--opacity must be between 1 and 100, got: {args.opacity}")
         if args.padding < 0:
-            parser.error(f"--padding tidak boleh negatif, diberikan: {args.padding}")
+            parser.error(f"--padding cannot be negative, got: {args.padding}")
         if args.watermark_font_size < 0:
-            parser.error(f"--watermark-font-size tidak boleh negatif, diberikan: {args.watermark_font_size}")
+            parser.error(f"--watermark-font-size cannot be negative, got: {args.watermark_font_size}")
         if not (1 <= args.watermark_scale <= 100):
-            parser.error(f"--watermark-scale harus antara 1-100, diberikan: {args.watermark_scale}")
+            parser.error(f"--watermark-scale must be between 1 and 100, got: {args.watermark_scale}")
         if args.image:
             if not os.path.exists(args.image):
-                parser.error(f"File watermark image tidak ditemukan: {args.image}")
+                parser.error(f"Watermark image not found: {args.image}")
             valid_exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
             if not args.image.lower().endswith(valid_exts):
                 parser.error(
-                    f"Format file watermark image tidak didukung: {args.image}. "
-                    f"Format yang didukung: {', '.join(valid_exts)}"
+                    f"Unsupported watermark image format: {args.image}. "
+                    f"Supported formats: {', '.join(valid_exts)}"
                 )
 
     base_dir = os.getcwd()
@@ -811,7 +823,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         base_dir=base_dir,
         outputs_dir=outputs_dir,
         font_dir=font_dir,
-        file_video_asli=os.path.abspath(os.path.join(base_dir, "video_asli.mp4")),
+        # The downloaded source video lives in outputs/ with the other working files.
+        file_video_asli=os.path.join(outputs_dir, "video_asli.mp4"),
         file_font_thumbnail=os.path.abspath(
             os.path.join(base_dir, NAMA_FONT_THUMBNAIL)
         ),
@@ -934,6 +947,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         voiceover_volume=args.voiceover_volume,
         original_volume=args.original_volume,
         voiceover_mode=args.voiceover_mode,
+        organize_library=not args.no_library,
+        library_dir=os.path.abspath(args.library_dir) if args.library_dir else None,
         voiceover_offset=args.voiceover_offset,
         edge_glow=args.edge_glow,
         edge_glow_mode=args.edge_glow_mode,

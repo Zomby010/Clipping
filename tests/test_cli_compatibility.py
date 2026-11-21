@@ -36,7 +36,7 @@ def test_cli_single_batch_and_cached_ai_flags_are_preserved(monkeypatch, tmp_pat
     assert batch.url_list == urls
     assert batch.ai_provider == "nvidia"
     assert batch.cleanup_source is True
-    assert batch.file_video_asli == str(tmp_path / "video_asli.mp4")
+    assert batch.file_video_asli == str(tmp_path / "outputs" / "video_asli.mp4")
 
 
 def test_cli_and_studio_use_compatible_model_without_reusing_legacy_cache(monkeypatch, tmp_path):

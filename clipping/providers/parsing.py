@@ -8,7 +8,7 @@ from .base import InvalidOutputError
 
 def clean_text(content):
     if not isinstance(content, str) or not content.strip():
-        raise InvalidOutputError("vLLM mengembalikan content kosong.")
+        raise InvalidOutputError("vLLM returned empty content.")
     text = content.strip()
     if text.startswith("<think>"):
         match = re.match(r"^<think>.*?</think>\s*", text, re.DOTALL)
@@ -18,10 +18,10 @@ def clean_text(content):
     if text.startswith("```"):
         match = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
         if not match:
-            raise InvalidOutputError("Fence JSON vLLM tidak lengkap.")
+            raise InvalidOutputError("The vLLM JSON code fence is incomplete.")
         text = match.group(1).strip()
     if not text:
-        raise InvalidOutputError("vLLM tidak menghasilkan jawaban final.")
+        raise InvalidOutputError("vLLM did not produce a final answer.")
     return text
 
 
@@ -34,9 +34,9 @@ def parse_clips(content, schema):
     try:
         value = json.loads(clean_text(content), parse_constant=invalid_constant)
     except (ValueError, TypeError):
-        raise InvalidOutputError("vLLM harus menghasilkan satu objek JSON lengkap dengan field clips.") from None
+        raise InvalidOutputError("vLLM must return one complete JSON object with a clips field.") from None
     error = next(Draft202012Validator(schema).iter_errors(value), None)
     if error is not None:
         # Do not quote validation messages: they can contain full user content.
-        raise InvalidOutputError("Output vLLM tidak memenuhi schema klip yang diminta.")
+        raise InvalidOutputError("vLLM output does not match the requested clip schema.")
     return value["clips"]

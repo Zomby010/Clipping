@@ -25,18 +25,18 @@ def _positive_int(value):
 
 def _local_prompt(prompt):
     # Only change the template, never replace strings inside user transcripts.
-    instruction, separator, transcript = prompt.partition("\nTranskrip:\n")
+    instruction, separator, transcript = prompt.partition("\nTranscript:\n")
     instruction = instruction.replace(
-        "Output HARUS berupa JSON array valid.",
-        'Output HARUS berupa objek JSON valid dengan satu field "clips" berupa array.',
+        "Output MUST be a valid JSON array.",
+        'Output MUST be a valid JSON object with a single field "clips" that is an array.',
     )
     instruction = instruction.replace(
-        "STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):\n[",
-        'STRUKTUR JSON WAJIB (Ikuti nama field ini secara kaku):\n{"clips": [',
+        "REQUIRED JSON STRUCTURE (follow these field names exactly):\n[",
+        'REQUIRED JSON STRUCTURE (follow these field names exactly):\n{"clips": [',
         1,
     )
-    if 'kaku):\n{"clips": [' in instruction:
-        # The fixed template finishes with its example array before Transkrip.
+    if 'exactly):\n{"clips": [' in instruction:
+        # The fixed template finishes with its example array before Transcript.
         position = instruction.rfind("]")
         instruction = instruction[:position + 1] + "}" + instruction[position + 1:]
     return instruction + separator + transcript
@@ -88,7 +88,7 @@ class VllmProvider:
     def _remaining(self):
         remaining = self.timeout if self._deadline is None else self._deadline - self._clock()
         if remaining <= 0:
-            raise ProviderUnavailableError("Batas waktu keseluruhan vLLM terlampaui.")
+            raise ProviderUnavailableError("The overall vLLM time limit was exceeded.")
         return remaining
 
     def _http_timeout(self, *, probe=False):
@@ -99,13 +99,13 @@ class VllmProvider:
     @staticmethod
     def _status_error(status):
         if status in {401, 403}:
-            return ProviderConfigError("Autentikasi vLLM ditolak. Periksa VLLM_API_KEY pada client dan server.", status_code=status)
+            return ProviderConfigError("vLLM rejected the credentials. Check VLLM_API_KEY on the client and the server.", status_code=status)
         if status == 404:
-            return ProviderConfigError("Endpoint/model vLLM tidak ditemukan. Periksa base URL, model served, dan akses /tokenize.", status_code=status)
+            return ProviderConfigError("vLLM endpoint or model not found. Check the base URL, the served model and access to /tokenize.", status_code=status)
         if status == 400:
-            return ProviderConfigError("vLLM menolak request. Periksa limit konteks, chat template, schema, dan versi server.", status_code=status)
+            return ProviderConfigError("vLLM rejected the request. Check the context limit, chat template, schema and server version.", status_code=status)
         return ProviderUnavailableError(
-            f"Request vLLM gagal (HTTP {status}). Periksa status server.",
+            f"vLLM request failed (HTTP {status}). Check the server status.",
             status_code=status, retryable=status in _RETRYABLE,
         )
 
@@ -120,7 +120,7 @@ class VllmProvider:
         except httpx.TimeoutException:
             raise ProviderUnavailableError("Probe/tokenisasi vLLM timeout.", retryable=True) from None
         except httpx.TransportError:
-            raise ProviderUnavailableError("Server vLLM tidak terjangkau. Jalankan server dan periksa VLLM_BASE_URL.") from None
+            raise ProviderUnavailableError("The vLLM server cannot be reached. Start the server and check VLLM_BASE_URL.") from None
         if response.status_code != 200:
             raise self._status_error(response.status_code)
         try:
@@ -128,7 +128,7 @@ class VllmProvider:
         except ValueError:
             raise ProviderConfigError("Endpoint vLLM mengembalikan response non-JSON.") from None
         if not isinstance(data, dict):
-            raise ProviderConfigError("Format response endpoint vLLM tidak didukung.")
+            raise ProviderConfigError("Unsupported vLLM endpoint response format.")
         return data
 
     def validate(self):
@@ -136,10 +136,10 @@ class VllmProvider:
         data = self._json_request("GET", self.api_base + "/models")
         records = data.get("data")
         if not isinstance(records, list):
-            raise ProviderConfigError("Response /v1/models tidak memuat daftar model.")
+            raise ProviderConfigError("The /v1/models response has no model list.")
         record = next((m for m in records if isinstance(m, dict) and m.get("id") == self.model), None)
         if record is None:
-            raise ProviderConfigError("VLLM_MODEL belum disajikan server. Cocokkan nama dengan /v1/models atau --served-model-name.")
+            raise ProviderConfigError("The server is not serving VLLM_MODEL. Match the name with /v1/models or --served-model-name.")
         limit = record.get("max_model_len")
         self._model_limit = limit if _positive_int(limit) else None
 
@@ -151,23 +151,23 @@ class VllmProvider:
         })
         count = data.get("count")
         if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-            raise ProviderConfigError("/tokenize tidak menyediakan jumlah token yang valid.")
+            raise ProviderConfigError("/tokenize did not return a valid token count.")
         limits = [v for v in (data.get("max_model_len"), self._model_limit, self.context_limit) if _positive_int(v)]
         if not limits:
-            raise ProviderConfigError("Limit konteks server tidak tersedia; set VLLM_CONTEXT_LIMIT sesuai konfigurasi server.")
+            raise ProviderConfigError("The server context limit is unknown; set VLLM_CONTEXT_LIMIT to match the server configuration.")
         limit = min(limits)
         self.run_meta.update(prompt_tokens=count, context_limit=limit, max_tokens=max_tokens)
         if count + max_tokens > limit:
             remaining = limit - count
             if remaining > 0:
-                advice = (f"Prompt ini menyisakan {remaining} token untuk jawaban. "
-                          "Kurangi batas output jika sisa itu cukup, atau gunakan input yang lebih pendek.")
+                advice = (f"This prompt leaves {remaining} tokens for the answer. "
+                          "Lower the output limit if that is enough, or use a shorter input.")
             else:
-                advice = "Prompt sudah memenuhi batas konteks. Gunakan input yang lebih pendek, misalnya satu bagian video."
+                advice = "The prompt already fills the context limit. Use a shorter input, for example one part of the video."
             raise ContextOverflowError(
-                f"Konteks vLLM tidak cukup: prompt {count} + output {max_tokens} > {limit} token. "
-                f"{advice} Untuk permintaan lengkap ini, model dan server perlu mendukung "
-                f"konteks minimal {count + max_tokens} token."
+                f"Not enough vLLM context: prompt {count} + output {max_tokens} > {limit} tokens. "
+                f"{advice} For this full request, the model and server need to support "
+                f"a context of at least {count + max_tokens} tokens."
             )
 
     def _completion(self, messages, *, max_tokens, temperature, top_p, schema=None):
@@ -187,11 +187,11 @@ class VllmProvider:
         except openai.APITimeoutError:
             raise ProviderUnavailableError("Inference vLLM timeout.", retryable=True) from None
         except openai.APIConnectionError:
-            raise ProviderUnavailableError("Koneksi vLLM gagal. Periksa proses server dan base URL.") from None
+            raise ProviderUnavailableError("vLLM connection failed. Check the server process and the base URL.") from None
         except openai.APIStatusError as exc:
             raise self._status_error(exc.status_code) from None
         except openai.APIError:
-            raise ProviderUnavailableError("Response vLLM tidak dapat dibaca SDK. Periksa kompatibilitas server.") from None
+            raise ProviderUnavailableError("The SDK could not read the vLLM response. Check server compatibility.") from None
 
     def _generate(self, messages, *, max_tokens, temperature, top_p, schema=None, parse=None):
         started = self._clock()
@@ -238,13 +238,13 @@ class VllmProvider:
                             for k in ("prompt_tokens", "completion_tokens", "total_tokens")
                         })
                     if not response.choices:
-                        raise InvalidOutputError("vLLM mengembalikan choices kosong.")
+                        raise InvalidOutputError("vLLM returned no choices.")
                     choice = response.choices[0]
                     if choice.finish_reason == "length":
                         # Repeating the same bounded request cannot fix truncation.
-                        raise ContextOverflowError("Output vLLM terpotong pada batas token. Kurangi jumlah klip atau naikkan budget output dan konteks yang tersedia.")
+                        raise ContextOverflowError("vLLM output was cut off at the token limit. Ask for fewer clips or raise the output budget and available context.")
                     if choice.finish_reason != "stop":
-                        raise InvalidOutputError("vLLM tidak menyelesaikan jawaban teks normal.")
+                        raise InvalidOutputError("vLLM did not finish a normal text answer.")
                     result = parse(choice.message.content) if parse else clean_text(choice.message.content)
                     self.run_meta["status"] = "completed"
                     return result
@@ -254,8 +254,8 @@ class VllmProvider:
                         raise
                     # Trusted diagnostic only; never echo model text into repair/logs.
                     current = list(messages) + [{"role": "user", "content": (
-                        "Buat ulang jawaban secara lengkap. Perbaiki masalah berikut: " + str(exc)
-                        + " Ikuti schema dan batas timestamp sumber; jangan menambahkan penjelasan."
+                        "Write the full answer again. Fix this problem: " + str(exc)
+                        + " Follow the schema and the source timestamp limits; do not add explanations."
                     )}]
                 except ProviderUnavailableError as exc:
                     record_failure(exc, attempt + 1)
@@ -278,10 +278,10 @@ class VllmProvider:
 
     def generate_clips(self, prompt, schema, *, transcript, requested_clips, min_duration=20, max_duration=179):
         if not _positive_int(requested_clips):
-            raise ProviderConfigError("Jumlah klip harus integer positif.")
+            raise ProviderConfigError("The number of clips must be a positive whole number.")
         end = transcript_end(transcript)
         if end < min_duration:
-            raise ProviderConfigError("Transkrip lebih pendek dari durasi minimum klip.")
+            raise ProviderConfigError("The transcript is shorter than the minimum clip length.")
         array = deepcopy(schema)
         array.update(minItems=1, maxItems=requested_clips)
         wrapped = {"type": "object", "properties": {"clips": array}, "required": ["clips"], "additionalProperties": False}
@@ -304,7 +304,7 @@ class VllmProvider:
             result = self._generate(messages, max_tokens=self.max_tokens, temperature=0.5, top_p=1, schema=wrapped, parse=parse)
             self.run_meta.update(requested_clips=requested_clips, returned_clips=len(result))
             if len(result) < requested_clips:
-                print(f"[vLLM] Menghasilkan {len(result)} dari {requested_clips} klip yang diminta; tidak ada klip tambahan yang direkayasa.")
+                print(f"[vLLM] Produced {len(result)} of the {requested_clips} clips requested; no extra clips were invented.")
             return result
         finally:
             self.cfg.ai_run_meta = dict(self.run_meta)
@@ -312,7 +312,7 @@ class VllmProvider:
     def generate_text(self, prompt, *, temperature=0.7, top_p=0.9, max_tokens=None):
         budget = self.max_tokens if max_tokens is None else max_tokens
         if not _positive_int(budget):
-            raise ProviderConfigError("Budget token voiceover harus integer positif.")
+            raise ProviderConfigError("The voice-over token budget must be a positive whole number.")
         # Keep voiceover metadata separate from transcript-analysis provenance.
         try:
             return self._generate(
