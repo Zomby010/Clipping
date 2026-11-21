@@ -597,8 +597,18 @@ def _generate_json_with_retry(client, model, fallback_model, contents, config):
 MIN_CLIP_DURATION = 20
 MAX_CLIP_DURATION = 179
 
+def clip_length_range(cfg=None) -> tuple[int, int]:
+    """(shortest, longest) clip length in seconds, from --min-length/--max-length."""
+    lo = int(getattr(cfg, "min_length", None) or MIN_CLIP_DURATION) if cfg else MIN_CLIP_DURATION
+    hi = int(getattr(cfg, "max_length", None) or MAX_CLIP_DURATION) if cfg else MAX_CLIP_DURATION
+    lo = max(5, min(lo, MAX_CLIP_DURATION))
+    hi = max(lo + 5, min(hi, MAX_CLIP_DURATION))
+    return lo, hi
+
+
 def get_analysis_prompt(transkrip_lengkap: str, jumlah_clip: int, durasi_hook: int, cfg=None) -> str:
     """Centralized prompt for both Gemini and NVIDIA providers."""
+    MIN_CLIP_DURATION, MAX_CLIP_DURATION = clip_length_range(cfg)
     # Build optional Hook V2 prompt section
     _hook_v2_prompt = ""
     if cfg and getattr(cfg, "hook_v2", False):
@@ -947,8 +957,8 @@ def analyze_with_vllm(transkrip_lengkap: str, cfg) -> list[dict]:
             build_clips_schema(TARGET_ACCOUNTS),
             transcript=transkrip_lengkap,
             requested_clips=cfg.jumlah_clip,
-            min_duration=MIN_CLIP_DURATION,
-            max_duration=MAX_CLIP_DURATION,
+            min_duration=clip_length_range(cfg)[0],
+            max_duration=clip_length_range(cfg)[1],
         )
 
 
