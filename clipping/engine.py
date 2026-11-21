@@ -634,6 +634,26 @@ SEGMENT-BASED TRIMMING (KEEP SEGMENTS, REQUIRED):
 - If the whole clip is already tight and engaging, use 1 segment that covers the whole clip.{_silence_hint}
 - Fill the "keep_segments" field as an array of objects (start_time, end_time).
 """
+    # Build the reaction-clip prompt section (short pre-saved reactions cut in)
+    _reaction_moods = list(getattr(cfg, "reaction_moods", []) or []) if cfg else []
+    if _reaction_moods:
+        _max_reactions = int(getattr(cfg, "max_reactions", 2))
+        _reaction_prompt = f"""
+
+REACTION CLIPS ("reaction_inserts"):
+- We have short reaction clips (about 1 second) that can be cut into the clip. Available moods: {", ".join(_reaction_moods)}.
+- Pick at most {_max_reactions} moments per clip where a reaction makes the moment land harder: right AFTER a punchline, a fail, a shocking twist or a big play.
+- "time" is the source-video second where the clip pauses for the reaction (use the same time scale as the transcript). Pick the end of the funny/shocking line, never the middle of a sentence.
+- Keep reactions at least 4 seconds apart and not in the first or last 2 seconds of the clip.
+- "mood" must be one of: {", ".join(_reaction_moods)}.
+- If no moment truly deserves a reaction, use an empty array [].
+"""
+    else:
+        _reaction_prompt = """
+
+REACTION CLIPS:
+- No reaction clips are available. Always set "reaction_inserts" to an empty array [].
+"""
     return f"""
 You are an Art Director, Video Editor and Metadata Strategist for short-form content on TikTok, Reels and YouTube Shorts.
 
@@ -847,7 +867,7 @@ OUTPUT RULES:
 - Do not give any explanation outside the JSON.
 - Every field must be filled.
 - When unsure, prioritise accuracy to the clip over excessive creativity.
-{_hook_v2_prompt}{_segment_prompt}
+{_hook_v2_prompt}{_segment_prompt}{_reaction_prompt}
 
 REQUIRED JSON STRUCTURE (follow these field names exactly):
 [
@@ -873,6 +893,7 @@ REQUIRED JSON STRUCTURE (follow these field names exactly):
       {{ "start_time": 30.5, "end_time": 55.0 }},
       {{ "start_time": 58.0, "end_time": 90.0 }}
     ],
+    "reaction_inserts": [{{ "time": 52.3, "mood": "laugh" }}],
     "title_indonesia": "...",
     "title_inggris": "...",
     "hastag": "#hashtag1 #hashtag2",

@@ -248,6 +248,24 @@
             "end_time"
           ]
         }
+      },
+      "reaction_inserts": {
+        "type": "ARRAY",
+        "items": {
+          "type": "OBJECT",
+          "properties": {
+            "time": {
+              "type": "NUMBER"
+            },
+            "mood": {
+              "type": "STRING"
+            }
+          },
+          "required": [
+            "time",
+            "mood"
+          ]
+        }
       }
     },
     "required": [
@@ -273,7 +291,8 @@
       "tiktok_caption",
       "klasifikasi_akun",
       "hook_v2",
-      "keep_segments"
+      "keep_segments",
+      "reaction_inserts"
     ]
   }
 }

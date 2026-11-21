@@ -144,6 +144,25 @@ BGM_MODE = "ducking"  # 'ducking' = sidechain compress, 'background' = constant 
 BGM_MOODS = ["chill", "epic", "sad", "upbeat", "suspense"]
 BGM_DIR = os.path.abspath(os.path.join(BASE_DIR, "assets", "bgm"))
 
+# Reaction clips: assets/reactions/<mood>/*.mp4 (laugh, shock, hype, ...)
+REACTIONS_DIR = os.path.abspath(os.path.join(BASE_DIR, "assets", "reactions"))
+REACTION_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
+
+
+def list_reaction_moods(reactions_dir):
+    """Names of the mood folders that hold at least one reaction clip."""
+    if not reactions_dir or not os.path.isdir(reactions_dir):
+        return []
+    moods = []
+    for name in sorted(os.listdir(reactions_dir)):
+        folder = os.path.join(reactions_dir, name)
+        if os.path.isdir(folder) and any(
+            f.lower().endswith(REACTION_VIDEO_EXTS) and not f.startswith(".")
+            for f in os.listdir(folder)
+        ):
+            moods.append(name.lower())
+    return moods
+
 # Whisper
 WHISPER_MODEL = "large-v3"
 WHISPER_DEVICE = "cuda"
@@ -678,6 +697,36 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.3,
         help="Volume of the original video audio while the voice-over is talking (0.3 = 30%%).",
     )
+    react_group = p.add_argument_group("Reaction clips")
+    react_group.add_argument(
+        "--no-reactions",
+        action="store_true",
+        default=False,
+        help="Do not cut reaction clips (assets/reactions/<mood>/) into the Shorts.",
+    )
+    react_group.add_argument(
+        "--reactions-dir",
+        default=REACTIONS_DIR,
+        help="Folder with one sub-folder per mood (laugh, shock, hype...) holding short reaction clips.",
+    )
+    react_group.add_argument(
+        "--max-reactions",
+        type=int,
+        default=2,
+        help="Most reaction clips cut into one Short.",
+    )
+    react_group.add_argument(
+        "--reaction-seconds",
+        type=float,
+        default=1.2,
+        help="Longest a reaction clip may play, in seconds (longer files are cut).",
+    )
+    react_group.add_argument(
+        "--reaction-volume",
+        type=float,
+        default=1.0,
+        help="Volume of the reaction clip's own sound (0.0 to 1.0+).",
+    )
     vo_group.add_argument(
         "--no-library",
         action="store_true",
@@ -950,6 +999,15 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         organize_library=not args.no_library,
         library_dir=os.path.abspath(args.library_dir) if args.library_dir else None,
         voiceover_offset=args.voiceover_offset,
+        reactions_enabled=not args.no_reactions,
+        reactions_dir=os.path.abspath(args.reactions_dir) if args.reactions_dir else None,
+        reaction_moods=(
+            [] if args.no_reactions or args.max_reactions <= 0
+            else list_reaction_moods(os.path.abspath(args.reactions_dir) if args.reactions_dir else None)
+        ),
+        max_reactions=args.max_reactions,
+        reaction_seconds=args.reaction_seconds,
+        reaction_volume=args.reaction_volume,
         edge_glow=args.edge_glow,
         edge_glow_mode=args.edge_glow_mode,
         # Watermark
