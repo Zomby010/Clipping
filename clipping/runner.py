@@ -200,7 +200,23 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
         custom_hook_path = hook_manager.download_custom_hook(cfg)
 
     # Step 5.5 — Generate Voice-Over (if enabled)
+    story_data = None
     if getattr(cfg, "voiceover", False):
+        if getattr(cfg, "story_mode", "series") in ("series", "standalone"):
+            from . import story as story_mod
+            print(f"\n📖 Writing our own storyline from the full captions ({cfg.story_mode})...")
+            story_data = story_mod.write_stories(cfg, hasil_json, transkrip_lengkap, data_segmen)
+            if story_data:
+                story_mod.save(story_data, os.path.join(cfg.outputs_dir, "story.json"))
+                for klip in hasil_json:
+                    ep = story_data["episodes"].get(int(klip["rank"]))
+                    if ep:
+                        klip["story_episode"] = {
+                            **ep, "series_title": story_data.get("series_title", ""),
+                            "mode": story_data.get("mode"),
+                        }
+            else:
+                print("   ↩️ [Story] No storyline this time; using the short commentary instead.")
         print(f"\n🎙️ Making voice-overs for {len(hasil_json)} clip(s)...")
         for klip in hasil_json:
             try:
@@ -217,13 +233,16 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
                             snippet_lines.append(seg_text)
                 snippet_text = " ".join(snippet_lines)
 
-                script = voiceover.generate_commentary_script(
-                    snippet_text,
-                    cfg,
-                    style=cfg.voiceover_style,
-                    language=cfg.voiceover_lang,
-                    length=cfg.voiceover_length,
-                )
+                if klip.get("story_episode"):
+                    script = klip["story_episode"]["script"]
+                else:
+                    script = voiceover.generate_commentary_script(
+                        snippet_text,
+                        cfg,
+                        style=cfg.voiceover_style,
+                        language=cfg.voiceover_lang,
+                        length=cfg.voiceover_length,
+                    )
 
                 if script:
                     # 2. Synthesize TTS
@@ -261,6 +280,10 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
             diarization_data=diarization_data,
         )
         if hasil_render:
+            if klip.get("story_episode"):
+                hasil_render["story_episode"] = {
+                    k: v for k, v in klip["story_episode"].items() if k != "script"
+                }
             render_manifest.append(hasil_render)
 
     # Step 7 — Inject source metadata for attribution & safety tracking
@@ -273,7 +296,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
     if getattr(cfg, "organize_library", True):
         from . import library
         try:
-            run_dir = library.organize_run(render_manifest, cfg)
+            run_dir = library.organize_run(render_manifest, cfg, story=story_data)
             if run_dir:
                 print(f"\n📁 Your finished clips are in: {run_dir}")
         except Exception as e:

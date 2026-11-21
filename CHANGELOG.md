@@ -17,6 +17,8 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 - Voice-over now plays over the moving clip by default (`--voiceover-mode overlay`). The original audio ducks to `--original-volume` (now 0.3) while the narrator talks, and captions show the narrator's words during that window. The previous freeze-frame intro is still available with `--voiceover-mode intro`.
 
 ### Added
+- Claude is the main AI (`--ai-provider claude`, now the default) with Gemini as automatic backup. Claude looks at contact sheets of the video when picking clips, and is reached through the installed Claude Code program or an Anthropic API key (`--claude-backend`, `--claude-model`, `--no-claude-frames`, `--claude-max-sheets`).
+- Storyline voice-overs written from the full captions: `--story-mode series` (one continuing story across the Shorts from a video), `standalone` (a separate story per Short) or `classic`; `--story-brief` for your direction. Saved as `Voice-overs/Storyline.txt`.
 - Clipping Studio desktop app (`python clipping_studio.py`, or `bash scripts/install_desktop_app.sh` for an app-menu and Desktop icon on Ubuntu): links, quick choices, Start/Stop with live progress, every option under All settings with search, API keys saved to `.env`, and named profiles.
 - `--min-length` and `--max-length` set how short or long the AI's clips may be (default 20 to 179 seconds).
 - Finished clips are sorted into `My Clips/<date time - title>/` with Videos, Thumbnails, Captions (.srt), Voice-overs (audio + script) and Upload details folders. `--no-library` keeps the old layout; `--library-dir` moves it.

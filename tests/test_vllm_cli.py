@@ -73,7 +73,7 @@ def test_explicit_cli_flags_override_local_environment():
 def test_default_cloud_provider_ignores_unused_bad_local_environment():
     os.environ.update({"VLLM_BASE_URL": "file:///invalid", "VLLM_MAX_TOKENS": "invalid"})
     cfg = config()
-    assert cfg.ai_provider == "gemini"
+    assert cfg.ai_provider == "claude"  # Claude first, Gemini as backup
 
 
 def test_cache_only_cli_ignores_unavailable_local_settings(tmp_path):

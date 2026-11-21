@@ -962,12 +962,61 @@ def analyze_with_vllm(transkrip_lengkap: str, cfg) -> list[dict]:
         )
 
 
+def analyze_with_claude(transkrip_lengkap: str, cfg) -> list[dict]:
+    """Claude picks the clips from the transcript AND pictures of the video."""
+    from clipping import frames
+    from clipping.providers import claude
+    from clipping.providers.schema import build_clips_schema
+    from clipping.providers.validation import validate_clips
+
+    prompt = get_analysis_prompt(transkrip_lengkap, cfg.jumlah_clip, cfg.durasi_hook, cfg=cfg)
+    video = getattr(cfg, "file_video_asli", "")
+    source_end = frames.probe_duration(video) if video and os.path.exists(video) else None
+    sheets = []
+    if getattr(cfg, "claude_frames", True) and source_end:
+        sheets = frames.make_sheets(
+            video, os.path.join(cfg.outputs_dir, "claude_frames"),
+            end=source_end, max_sheets=int(getattr(cfg, "claude_max_sheets", 12)), prefix="video",
+        )
+    if sheets:
+        prompt = (
+            "You can SEE the video: the pictures are contact sheets of frames from it.\n"
+            f"{frames.describe_sheets(sheets)}\n"
+            "Use them with the transcript: prefer moments where something visibly happens "
+            "(action, crashes, chases, reactions, goals), not only moments where people talk. "
+            "For gameplay with little talking, the pictures matter more than the words.\n\n"
+            + prompt
+        )
+    clips = claude.ask(cfg, prompt, schema=build_clips_schema(TARGET_ACCOUNTS),
+                       images=[s["path"] for s in sheets], label="Clips")
+    if not isinstance(clips, list):
+        raise ValueError("Claude did not return a list of clips.")
+    if source_end:
+        lo, hi = clip_length_range(cfg)
+        validate_clips(clips, source_end=source_end + 1.0, requested_clips=cfg.jumlah_clip,
+                       min_duration=max(5, lo - 3), max_duration=hi + 3)
+    cfg.ai_run_meta = {
+        "actual_provider": f"claude-{claude.pick_backend(cfg)}",
+        "model": getattr(cfg, "claude_model", None) or claude.DEFAULT_MODEL,
+        "status": "completed", "frames_sent": len(sheets),
+    }
+    print(f"✅ Claude picked {len(clips)} clip(s).")
+    return clips
+
+
 def analyze_with_ai(transkrip_lengkap: str, cfg) -> list[dict]:
-    """Dispatch analysis; retain legacy NVIDIA-to-Gemini fallback only."""
+    """Dispatch analysis; Claude and NVIDIA fall back to Gemini."""
     cfg.ai_run_meta = None
     provider = getattr(cfg, "ai_provider", "gemini")
     if provider == "vllm":
         return analyze_with_vllm(transkrip_lengkap, cfg)
+
+    if provider == "claude":
+        try:
+            return analyze_with_claude(transkrip_lengkap, cfg)
+        except Exception as e:
+            cfg.ai_run_meta = None
+            print(f"⚠️ Claude could not pick the clips ({e}). Falling back to Gemini...")
 
     if provider == "nvidia":
         if not cfg.api_key_nvidia:
