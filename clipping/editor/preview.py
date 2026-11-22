@@ -90,18 +90,33 @@ class MpvPlayer(BasePlayer):
             return
         import mpv
         self.widget.update_idletasks()
-        self._mpv = mpv.MPV(
-            wid=str(self.widget.winfo_id()),
-            keep_open="always",
-            idle="yes",
-            osc="no",
-            input_default_bindings=False,
-            input_vo_keyboard=False,
-            hwdec="no",
-            pause=True,
-            hr_seek="yes",
-            **({"vo": os.environ["CLIP_EDITOR_MPV_VO"]} if os.environ.get("CLIP_EDITOR_MPV_VO") else {}),
-        )
+        # Embedding with wid= only works through X11. On a Wayland desktop mpv's
+        # default output ignores wid and opens its own full-screen window, which
+        # covers the screen and freezes the app. So always ask for an X11 output.
+        forced = os.environ.get("CLIP_EDITOR_MPV_VO")
+        choices = [{"vo": forced}] if forced else [
+            {"vo": "gpu", "gpu_context": "x11egl"},
+            {"vo": "x11"},  # slower, but works without a GPU context
+        ]
+        last_error = None
+        for extra in choices:
+            try:
+                self._mpv = mpv.MPV(
+                    wid=str(self.widget.winfo_id()),
+                    keep_open="always",
+                    idle="yes",
+                    osc="no",
+                    input_default_bindings=False,
+                    input_vo_keyboard=False,
+                    hwdec="no",
+                    pause=True,
+                    hr_seek="yes",
+                    **extra,
+                )
+                return
+            except Exception as err:  # try the next output
+                last_error = err
+        raise last_error
 
     def load(self, path: str, start: float = 0.0, duration: float | None = None):
         self._ensure()
