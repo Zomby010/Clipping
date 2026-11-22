@@ -380,7 +380,9 @@ class TextPanelsMixin:
             secs = 1.5
         pos = dict(GRID_NAMES).get(self.pop_pos.get(), "1,1")
         end = min(self.project.total_length, t + secs)
-        self.project.overlays.append({"type": "text", "start": round(t, 2), "end": round(end, 2),
+        import uuid
+        self.project.overlays.append({"id": f"pop_{uuid.uuid4().hex[:8]}", "type": "text",
+                                      "start": round(t, 2), "end": round(end, 2),
                                       "text": text, "position": pos})
         self.pop_var.set("")
         self.commit(f"Pop-up added at {timeline.format_time(t, True)}.")
