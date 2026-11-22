@@ -70,12 +70,17 @@ AVAILABLE_VOICES = {
 # TTS SYNTHESIS (EDGE-TTS)
 # ==============================================================================
 
-async def _synthesize_async(text: str, voice: str, output_audio_path: str, output_subs_path: str = None):
-    """Async core for TTS generation."""
+async def _synthesize_async(text: str, voice: str, output_audio_path: str, output_subs_path: str = None,
+                            rate: str = None, pitch: str = None, boundary: str = None):
+    """Async core for TTS generation.
+
+    ``rate`` ("+10%"), ``pitch`` ("-5Hz") and ``boundary`` ("WordBoundary" for
+    word-by-word timings) are optional; Clipping Studio leaves them out."""
     if edge_tts is None:
         raise ImportError("edge-tts is not installed. Run: pip install edge-tts")
 
-    communicate = edge_tts.Communicate(text, voice)
+    extra = {k: v for k, v in (("rate", rate), ("pitch", pitch), ("boundary", boundary)) if v}
+    communicate = edge_tts.Communicate(text, voice, **extra)
     submaker = edge_tts.SubMaker()
 
     with open(output_audio_path, "wb") as file:

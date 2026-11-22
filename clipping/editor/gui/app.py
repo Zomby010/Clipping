@@ -35,6 +35,8 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from clipping.editor import captions as C
 from clipping.editor import framing, media, preview, render, timeline
 from clipping.editor import project as P
+from clipping.editor import script as S_script  # phase 3
+from clipping.editor.gui.story_panels import StoryPanelsMixin  # phase 3
 from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
 
 APP_NAME = "Clip Editor"
@@ -59,10 +61,6 @@ COLORS = {
 }
 
 LATER_TABS = (
-    ("Story", 3, "Claude watches the video, stars the viral moments and writes a script timed to "
-                 "your cut, in Explain, React or New story mode."),
-    ("Voice", 3, "A voice for each script line (free Kenyan, Nigerian or Swahili voices, or your "
-                 "own mic), one voice per character in New story mode."),
     ("Reactions", 4, "Drop 1 to 2 second reaction clips, arrows and circles, and your channel logo."),
     ("Music and SFX", 4, "Music by mood, sound effects, music that dips under voices, and loudness "
                          "set for the platforms."),
@@ -89,7 +87,7 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp(TextPanelsMixin):
+class EditorApp(TextPanelsMixin, StoryPanelsMixin):
     APP_NAME = APP_NAME
 
     def __init__(self, root: tk.Tk):
@@ -365,6 +363,12 @@ class EditorApp(TextPanelsMixin):
         self.captions_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.text_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.export_tab = ScrollPage(self.pages, bg=COLORS["card"])
+        # --- phase 3: story and voice ---
+        self.story_tab = ScrollPage(self.pages, bg=COLORS["card"])
+        self.voice_tab = ScrollPage(self.pages, bg=COLORS["card"])
+        self.page_frames["Story"] = self.story_tab
+        self.page_frames["Voice"] = self.voice_tab
+        # --- end phase 3 ---
         self.page_frames["Framing"] = self.framing_tab
         self.page_frames["Captions"] = self.captions_tab
         self.page_frames["Hook and text"] = self.text_tab
@@ -377,6 +381,8 @@ class EditorApp(TextPanelsMixin):
         self._build_captions_page(self.captions_tab.inner)
         self._build_text_page(self.text_tab.inner)
         self._build_export_tab(self.export_tab.inner)
+        self._build_story_page(self.story_tab.inner)   # phase 3
+        self._build_voice_page(self.voice_tab.inner)   # phase 3
         self.show_page("Framing")
 
     def show_page(self, name: str):
@@ -413,6 +419,7 @@ class EditorApp(TextPanelsMixin):
         sp = ttk.Combobox(t, textvariable=self.fr_speed, values=SPEEDS, state="readonly", width=8)
         sp.pack(anchor="w")
         sp.bind("<<ComboboxSelected>>", lambda e: self._framing_changed())
+        self._build_original_level(t)   # phase 3: the moment's own sound
         ttk.Button(t, text="Use for every moment", command=self.framing_to_all).pack(anchor="w", pady=(14, 4))
         self.auto_info = tk.StringVar()
         ttk.Label(t, textvariable=self.auto_info, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
@@ -482,7 +489,8 @@ class EditorApp(TextPanelsMixin):
 
     def save(self, note: str | None = None):
         try:
-            P.save(self.project, self.ensure_folder())
+            self.project.folder = self.ensure_folder()   # phase 3: voice_clips() finds the voice files from here
+            P.save(self.project, self.project.folder)
             if note:
                 self.status(note)
         except OSError as e:
@@ -532,6 +540,7 @@ class EditorApp(TextPanelsMixin):
             self._refresh_captions()
             self._refresh_text_page()
             self._refresh_upload()
+            self._refresh_story()   # phase 3
             self.draw_timeline()
         finally:
             self._loading = False
@@ -549,6 +558,7 @@ class EditorApp(TextPanelsMixin):
         self.fr_pan_y.set(seg.framing.pan_y)
         self.fr_zoom.set(seg.framing.zoom)
         self.fr_speed.set(f"{seg.speed:g}x")
+        self._refresh_original_level(seg)   # phase 3
         if seg.framing.mode == "auto":
             if seg.framing.auto_x is None:
                 self.auto_info.set("The automatic crop is worked out when you watch your cut or export. "
@@ -576,7 +586,7 @@ class EditorApp(TextPanelsMixin):
             y = top + row * (lane_h + 2)
             c.create_text(8, y + lane_h / 2, text=name, anchor="w", fill=COLORS["muted"], font=(self.base_font[0], 9))
             c.create_rectangle(label_w, y, w - 8, y + lane_h, fill=COLORS["lane"], outline="")
-            if 0 < row < len(LANES) - 1:
+            if 1 < row < len(LANES) - 1:   # phase 3 draws the Voice-over lane (row 1)
                 c.create_text(label_w + 8, y + lane_h / 2, text="(later phases)", anchor="w",
                               fill="#b0b6c0", font=(self.base_font[0], 8))
         if total <= 0:
@@ -593,6 +603,16 @@ class EditorApp(TextPanelsMixin):
             if x1 - x0 > 18:
                 c.create_text((x0 + x1) / 2, top + lane_h / 2, text=str(p.index + 1), fill=COLORS["text"],
                               font=(self.base_font[0], 9, "bold"))
+        # --- phase 3: Voice-over lane, one block per script line ---
+        vy = top + 1 * (lane_h + 2)
+        for ln in S_script.visible(self.project):
+            x0 = label_w + ln["start"] / total * span
+            x1 = label_w + min(total, ln["end"]) / total * span
+            made = bool(ln.get("audio"))
+            c.create_rectangle(x0 + 1, vy + 1, max(x0 + 4, x1 - 1), vy + lane_h - 1,
+                               fill="#d3f9d8" if made else "#fff3bf", outline="#2f9e44" if made else "#e67700",
+                               tags=(f"line_{ln['id']}",))
+        # --- end phase 3 ---
         cy = top + (len(LANES) - 1) * (lane_h + 2)
         for cap in C.visible(self.project):
             x0 = label_w + cap["start"] / total * span
@@ -873,6 +893,11 @@ class EditorApp(TextPanelsMixin):
             if not self._slider_drag:
                 self.slider.set(t)
             self.play_btn.configure(text="Pause" if self.player.playing else "Play")
+            stop_at = getattr(self, "_stop_at", None)   # phase 3: Play line stops at the end of the line
+            if stop_at is not None and (not self.player.playing or t >= stop_at):
+                if self.player.playing:
+                    self.player.pause()
+                self._stop_at = None
             if self.watch.get() == "cut":
                 self.draw_timeline()
         except Exception:
@@ -898,6 +923,17 @@ class EditorApp(TextPanelsMixin):
             self.player.set_overlay(self.safe_var.get())
 
     def _timeline_click(self, event):
+        # --- phase 3: a click on a Voice-over block selects that script line ---
+        if 3 + 1 * 16 <= event.y < 3 + 2 * 16:
+            total = self.project.total_length
+            w = self.timeline.winfo_width()
+            if total > 0 and event.x >= 92:
+                t = (event.x - 92) / max(1, (w - 8 - 92)) * total
+                for ln in S_script.visible(self.project):
+                    if ln["start"] - 0.05 <= t <= max(ln["end"], ln["start"] + 0.3):
+                        self.select_line(ln["id"])
+                        return
+        # --- end phase 3 ---
         total = self.project.total_length
         w = self.timeline.winfo_width()
         label_w = 92
@@ -945,6 +981,8 @@ class EditorApp(TextPanelsMixin):
                 self.player.set_overlay(self.safe_var.get())
                 self.slider.configure(to=max(0.1, snap.total_length))
                 self.status("Showing your cut. Changes update it automatically.")
+                if getattr(self, "_play_range", None):   # phase 3: Play line
+                    self._start_play_range()
 
         self.run_job("Making a quick preview of your cut…", work, done)
 
@@ -986,6 +1024,7 @@ class EditorApp(TextPanelsMixin):
             return
         self.player.pause()
         snapshot = P.Project.from_dict(self.project.to_dict())
+        snapshot.folder = self.ensure_folder()   # phase 3: so the voices are found
         ready = self.ready_root
 
         def work(progress):
@@ -1159,13 +1198,6 @@ class EditorApp(TextPanelsMixin):
         self.status(note)
         if self.watch.get() == "cut":
             self._schedule_preview()
-
-    def ask_claude(self):
-        messagebox.showinfo(
-            APP_NAME,
-            "Claude joins in phase 3: it will log what happens in your videos, star the viral moments "
-            "and write a script timed to your cut.",
-        )
 
     def on_close(self):
         if self.busy and not messagebox.askyesno(APP_NAME, "A job is still running. Stop it and close?"):
