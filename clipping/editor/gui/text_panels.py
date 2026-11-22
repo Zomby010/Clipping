@@ -450,8 +450,10 @@ class TextPanelsMixin:
         new = {"title": self.up_title.get().strip()[:publish.TITLE_LIMIT],
                "description": self.up_desc.get("1.0", "end").strip(),
                "hashtags": " ".join(self.up_tags.get().split())}
-        if new != publish.upload_fields(self.project) or not self.project.upload:
-            self.project.upload = new
+        current = publish.upload_fields(self.project)
+        if any(new[k] != current.get(k) for k in new) or not self.project.upload:
+            # keep the other keys (description footer, other platforms' text)
+            self.project.upload = {**(self.project.upload or {}), **new}
             self.commit()
 
     def pick_cover(self):
