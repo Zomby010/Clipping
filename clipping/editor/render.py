@@ -251,11 +251,12 @@ def visual_layers_for(project: Project, q: Quality, workdir: str, log=None):
     return visuals
 
 
-def safe_zone_filter() -> str:
+def safe_zone_filter(zones=None) -> str:
     """drawbox filters that shade the platform button areas. Uses iw/ih, so it
-    works at any size (the mpv preview and ffmpeg alike)."""
+    works at any size (the mpv preview and ffmpeg alike). ``zones`` defaults to
+    all platforms together (see platforms.PLATFORM_SAFE_ZONES for each one)."""
     boxes = []
-    for _name, x, y, w, h in SAFE_ZONES:
+    for _name, x, y, w, h in (zones or SAFE_ZONES):
         boxes.append(
             f"drawbox=x=iw*{x}:y=ih*{y}:w=iw*{w}:h=ih*{h}:color=black@0.35:t=fill"
         )
