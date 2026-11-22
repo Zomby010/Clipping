@@ -32,8 +32,10 @@ import traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from clipping.editor import captions as C
 from clipping.editor import framing, media, preview, render, timeline
 from clipping.editor import project as P
+from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
 
 APP_NAME = "Clip Editor"
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -59,8 +61,6 @@ COLORS = {
 LATER_TABS = (
     ("Story", 3, "Claude watches the video, stars the viral moments and writes a script timed to "
                  "your cut, in Explain, React or New story mode."),
-    ("Captions", 2, "Captions with word highlight, a style for each channel, a hook line for the "
-                    "first 2 seconds, and pop-up text and emoji."),
     ("Voice", 3, "A voice for each script line (free Kenyan, Nigerian or Swahili voices, or your "
                  "own mic), one voice per character in New story mode."),
     ("Reactions", 4, "Drop 1 to 2 second reaction clips, arrows and circles, and your channel logo."),
@@ -89,7 +89,9 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp:
+class EditorApp(TextPanelsMixin):
+    APP_NAME = APP_NAME
+
     def __init__(self, root: tk.Tk):
         self.root = root
         self.settings = load_settings()
@@ -360,15 +362,21 @@ class EditorApp:
             ttk.Label(page, text=text, style="Card.TLabel", wraplength=270, justify="left").pack(anchor="w")
             self.page_frames[name] = page
         self.framing_tab = ttk.Frame(self.pages, style="Card.TFrame", padding=12)
-        self.export_tab = ttk.Frame(self.pages, style="Card.TFrame", padding=12)
+        self.captions_tab = ScrollPage(self.pages, bg=COLORS["card"])
+        self.text_tab = ScrollPage(self.pages, bg=COLORS["card"])
+        self.export_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.page_frames["Framing"] = self.framing_tab
+        self.page_frames["Captions"] = self.captions_tab
+        self.page_frames["Hook and text"] = self.text_tab
         self.page_frames["Export"] = self.export_tab
-        order = ("Story", "Captions", "Voice", "Reactions", "Music and SFX", "Framing", "Export")
+        order = ("Story", "Captions", "Hook and text", "Voice", "Reactions", "Music and SFX", "Framing", "Export")
         for name in order:
             ttk.Radiobutton(rail, text=name, value=name, variable=self.page_var, style="Rail.Toolbutton",
                             command=lambda n=name: self.show_page(n)).pack(fill="x", pady=1)
         self._build_framing_tab(self.framing_tab)
-        self._build_export_tab(self.export_tab)
+        self._build_captions_page(self.captions_tab.inner)
+        self._build_text_page(self.text_tab.inner)
+        self._build_export_tab(self.export_tab.inner)
         self.show_page("Framing")
 
     def show_page(self, name: str):
@@ -424,8 +432,7 @@ class EditorApp:
         ttk.Label(t, text="Last exports", style="Card.TLabel").pack(anchor="w", pady=(6, 2))
         self.exports_var = tk.StringVar()
         ttk.Label(t, textvariable=self.exports_var, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
-        ttk.Label(t, style="Help.TLabel", wraplength=270, justify="left",
-                  text="\nCaptions, titles, hashtags and the cover picture come in phase 2.").pack(anchor="w")
+        self._build_upload_section(t)
 
     def _bind_keys(self):
         r = self.root
@@ -483,6 +490,7 @@ class EditorApp:
 
     def commit(self, note: str | None = None, keep_selection: str | None = None):
         """Call after every change: undo point, autosave, redraw."""
+        C.refresh(self.project)  # captions follow the cut list
         if self.history.record(self.project):
             self.preview_stale = True
             self.save()
@@ -521,6 +529,9 @@ class EditorApp:
             self.redo_btn.configure(state="normal" if self.history.can_redo() else "disabled")
             self._refresh_framing()
             self._refresh_export()
+            self._refresh_captions()
+            self._refresh_text_page()
+            self._refresh_upload()
             self.draw_timeline()
         finally:
             self._loading = False
@@ -565,7 +576,7 @@ class EditorApp:
             y = top + row * (lane_h + 2)
             c.create_text(8, y + lane_h / 2, text=name, anchor="w", fill=COLORS["muted"], font=(self.base_font[0], 9))
             c.create_rectangle(label_w, y, w - 8, y + lane_h, fill=COLORS["lane"], outline="")
-            if row > 0:
+            if 0 < row < len(LANES) - 1:
                 c.create_text(label_w + 8, y + lane_h / 2, text="(later phases)", anchor="w",
                               fill="#b0b6c0", font=(self.base_font[0], 8))
         if total <= 0:
@@ -582,6 +593,17 @@ class EditorApp:
             if x1 - x0 > 18:
                 c.create_text((x0 + x1) / 2, top + lane_h / 2, text=str(p.index + 1), fill=COLORS["text"],
                               font=(self.base_font[0], 9, "bold"))
+        cy = top + (len(LANES) - 1) * (lane_h + 2)
+        for cap in C.visible(self.project):
+            x0 = label_w + cap["start"] / total * span
+            x1 = label_w + cap["end"] / total * span
+            c.create_rectangle(x0 + 1, cy + 2, max(x0 + 3, x1 - 1), cy + lane_h - 2, fill="#d9e2f1", outline="#7a8db3")
+        extras = ([(0.0, float((self.project.hook or {}).get("seconds", 2.0)))] if (self.project.hook or {}).get("text") else [])
+        extras += [(o["start"], o["end"]) for o in self.project.overlays if o.get("type") == "text"]
+        for a, b in extras:
+            x0 = label_w + a / total * span
+            x1 = label_w + min(b, total) / total * span
+            c.create_rectangle(x0 + 1, cy + 4, max(x0 + 3, x1 - 1), cy + lane_h - 4, fill="#ffd8a8", outline="#e8590c")
         if self.watch.get() == "cut" and self.player.path == self.preview_path:
             x = label_w + min(1.0, self.player.time() / total) * span
             c.create_line(x, 0, x, top + 6 * (lane_h + 2), fill=COLORS["accent"], width=2, tags=("playhead",))
@@ -958,7 +980,11 @@ class EditorApp:
             self._refresh_export()
             self.show_page("Export")
             self.status(f"Exported in {record['seconds_taken']} s: {record['path']}")
-            if messagebox.askyesno(APP_NAME, f"Your video is ready:\n{record['path']}\n\nOpen the folder?"):
+            files = "\n".join("  " + f for f in record.get("files", []))
+            kids = ("\n\nKids video: when you upload, choose \"Yes, it's made for kids\"."
+                    if snap.channel == "Kids" else "")
+            if messagebox.askyesno(APP_NAME, f"Your video is ready in:\n{record['folder']}\n\n{files}{kids}"
+                                             "\n\nOpen the folder?"):
                 self.open_folder(record["folder"])
 
         self.run_job("Exporting the full-size video…", work, done)
