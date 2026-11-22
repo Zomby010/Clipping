@@ -13,3 +13,7 @@ venv/
 # Clipping Studio app: your own settings and profiles
 studio_settings.json
 studio_settings.json.tmp
+My Edits/
+Ready to post/
+clip_editor_settings.json
+clip_editor_settings.json.tmp
