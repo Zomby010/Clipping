@@ -183,6 +183,30 @@ python clipping_studio.py                   # or start it from a terminal
 
 The app starts with laptop-friendly choices: speech recognition on the CPU (`small`, `int8`), 3 clips, 15 to 60 seconds, voice-over on.
 
+## ✂️ Clip Editor (desktop app)
+
+A simple editor for making your own cuts: pick any moments from full videos, join them in any order, frame them for 9:16 and export one video for YouTube Shorts, TikTok, Instagram Reels and Facebook Reels. It runs on a laptop CPU: you edit on a small preview copy, and the full-size video is only made when you press **Export**.
+
+```bash
+sudo apt install python3-tk ffmpeg mpv       # once, on Ubuntu (mpv plays video inside the window)
+pip install python-mpv                       # once, in the same Python you run the app with
+bash scripts/install_desktop_app.sh          # adds "Clip Editor" (and Clipping Studio) to the app menu and Desktop
+python clip_editor.py                        # or start it from a terminal
+```
+
+### How to try it
+
+1. Open **Clip Editor** and press **Add video…** (left). Pick a downloaded video.
+2. Make three moments, either way:
+   - type `1:02-1:10, 2:38-2:49, 4:06-4:55` in the box and press **Add** (`1.02` also means 1 min 2 s), or
+   - press **Play**, then **I** at the start of a moment and **O** at its end.
+3. Reorder with **Up** / **Down**, cut one in two with **Split here**, fine-tune with **Start / End ±0.1**. The total length shows under the list (1:08 for the example) and says if it's too long for a platform.
+4. Pick a moment and choose its framing on the right: **Follow the people** (automatic crop), **Crop, I choose the position**, or **Whole picture, blurred behind**. Zoom and speed are there too.
+5. Switch **Watch** to **My cut (9:16)** to see the joined video. **Shade button areas** shows where platform buttons cover the picture.
+6. Press **Export**. The video goes to `Ready to post/<date> - <name>/`.
+
+Every change saves itself to `My Edits/<date> - <name>/project.json` and can be undone (**Ctrl+Z**, redo **Ctrl+Y**). Reopen an edit with **Open…**. Captions, Claude's storyline and voice-over, music, sound effects and reactions arrive in the next phases (the panels on the right say which). Without mpv the editor still works but shows still pictures; **Open in video player** plays the video in another window.
+
 ## 🚀 Local Quick Start
 
 ```bash

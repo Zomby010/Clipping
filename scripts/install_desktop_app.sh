@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Adds "Clipping Studio" to the Ubuntu app menu and puts an icon on the Desktop.
+# Adds "Clipping Studio" and "Clip Editor" to the Ubuntu app menu and puts
+# their icons on the Desktop.
 # Run from anywhere:  bash scripts/install_desktop_app.sh
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_ID="clipping-studio"
 
 # Use the project's virtual environment when there is one.
 if [ -x "$REPO_DIR/.venv/bin/python" ]; then
@@ -16,7 +16,7 @@ else
 fi
 
 if ! "$PY" -c "import tkinter" 2>/dev/null; then
-  echo "Clipping Studio needs Tk for its window. Installing python3-tk (asks for your password)..."
+  echo "Clipping Studio and Clip Editor need Tk for their windows. Installing python3-tk (asks for your password)..."
   sudo apt-get install -y python3-tk
   if ! "$PY" -c "import tkinter" 2>/dev/null; then
     echo "Tk still can't be loaded by $PY."
@@ -31,34 +31,55 @@ if ! command -v deno >/dev/null 2>&1 && [ ! -x "$HOME/.deno/bin/deno" ]; then
   echo "(then open a new terminal). Downloads still work without it, but some formats may be missing."
 fi
 
+# Clip Editor plays video inside its window with mpv (smooth on a CPU).
+# Without it the editor still works, showing still pictures instead.
+if ! "$PY" -c "import mpv" 2>/dev/null; then
+  echo "Clip Editor plays videos with mpv. Installing mpv (asks for your password)..."
+  sudo apt-get install -y mpv || true
+  if ! "$PY" -m pip install --quiet python-mpv 2>/dev/null; then
+    "$PY" -m pip install --quiet --user python-mpv 2>/dev/null \
+      || echo "Could not install python-mpv for $PY. Clip Editor will show still pictures until it is installed."
+  fi
+fi
+
 APPS_DIR="$HOME/.local/share/applications"
 mkdir -p "$APPS_DIR"
-DESKTOP_FILE="$APPS_DIR/$APP_ID.desktop"
+DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
 
-cat > "$DESKTOP_FILE" <<DESKTOP
+# make_launcher <id> <name> <comment> <script> <icon> <window class>
+make_launcher() {
+  local app_id="$1" name="$2" comment="$3" script="$4" icon="$5" wm_class="$6"
+  local desktop_file="$APPS_DIR/$app_id.desktop"
+  cat > "$desktop_file" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Clipping Studio
-Comment=Turn long videos into Shorts
-Exec="$PY" "$REPO_DIR/clipping_studio.py"
+Name=$name
+Comment=$comment
+Exec="$PY" "$REPO_DIR/$script"
 Path=$REPO_DIR
-Icon=$REPO_DIR/assets/app/icon.png
+Icon=$REPO_DIR/$icon
 Terminal=false
 Categories=AudioVideo;Video;
-StartupWMClass=ClippingStudio
+StartupWMClass=$wm_class
 DESKTOP
-chmod +x "$DESKTOP_FILE"
+  chmod +x "$desktop_file"
+  if [ -d "$DESKTOP_DIR" ]; then
+    cp "$desktop_file" "$DESKTOP_DIR/$app_id.desktop"
+    chmod +x "$DESKTOP_DIR/$app_id.desktop"
+    # Ubuntu asks you to "Allow Launching" unless the icon is marked trusted.
+    gio set "$DESKTOP_DIR/$app_id.desktop" metadata::trusted true 2>/dev/null || true
+  fi
+}
 
-DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
-if [ -d "$DESKTOP_DIR" ]; then
-  cp "$DESKTOP_FILE" "$DESKTOP_DIR/$APP_ID.desktop"
-  chmod +x "$DESKTOP_DIR/$APP_ID.desktop"
-  # Ubuntu asks you to "Allow Launching" unless the icon is marked trusted.
-  gio set "$DESKTOP_DIR/$APP_ID.desktop" metadata::trusted true 2>/dev/null || true
-fi
+make_launcher clipping-studio "Clipping Studio" "Turn long videos into Shorts" \
+  clipping_studio.py assets/app/icon.png ClippingStudio
+make_launcher clip-editor "Clip Editor" "Pick your own moments and edit them into Shorts" \
+  clip_editor.py assets/app/clip-editor.png ClipEditor
 
 update-desktop-database "$APPS_DIR" 2>/dev/null || true
 
-echo "Done. Open 'Clipping Studio' from the app menu or the Desktop icon."
+echo "Done. Open 'Clipping Studio' or 'Clip Editor' from the app menu or the Desktop icons."
 echo "If the Desktop icon shows a warning, right-click it and choose 'Allow Launching'."
-echo "You can also start it from a terminal:  $PY $REPO_DIR/clipping_studio.py"
+echo "You can also start them from a terminal:"
+echo "  $PY $REPO_DIR/clipping_studio.py"
+echo "  $PY $REPO_DIR/clip_editor.py"
