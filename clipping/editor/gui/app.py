@@ -654,6 +654,24 @@ class EditorApp(TextPanelsMixin):
             self.watch.set("source")
             self.load_source(src)
 
+    def _sync_source(self):
+        """Keep the video on screen in step with the edit's videos.
+        After Undo, Redo or New edit the edit may have lost (or regained) its video:
+        without this the old video kept playing while Mark start / Mark end refused to work."""
+        src = self.project.source(self.current_source_id) if self.current_source_id else None
+        if src is None:
+            src = self.project.sources[0] if self.project.sources else None
+            self.current_source_id = src.id if src else None
+        if self.watch.get() != "source":
+            return
+        if src is None:
+            self.player.clear()
+            self.mark_in = self.mark_out = None
+            self._show_marks()
+            self.slider.set(0)
+        elif self.player.path != src.path:
+            self.load_source(src)
+
     def load_source(self, src: P.Source | None, at: float = 0.0):
         if src is None:
             return
@@ -701,7 +719,10 @@ class EditorApp(TextPanelsMixin):
             self.add_marked()
 
     def _can_mark(self) -> bool:
-        if self.watch.get() != "source" or not self.current_source_id:
+        if not self.current_source_id:
+            self.status("Add a video first, then mark moments in it.")
+            return False
+        if self.watch.get() != "source":
             self.status("Marks work while watching the video you're cutting from.")
             return False
         return True
@@ -1088,6 +1109,7 @@ class EditorApp(TextPanelsMixin):
         self.watch.set("source")
         self.save()
         self.refresh_all()
+        self._sync_source()
         self.status("New edit. Add a video to start.")
 
     def open_dialog(self):
@@ -1132,9 +1154,8 @@ class EditorApp(TextPanelsMixin):
         self.project = project
         self.preview_stale = True
         self.save()
-        if self.current_source_id and not project.source(self.current_source_id):
-            self.current_source_id = project.sources[0].id if project.sources else None
         self.refresh_all()
+        self._sync_source()
         self.status(note)
         if self.watch.get() == "cut":
             self._schedule_preview()

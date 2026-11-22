@@ -53,6 +53,12 @@ class BasePlayer:
     def toggle(self):
         self.pause() if self.playing else self.play()
 
+    def clear(self):
+        """Stop and forget the current video (nothing is loaded afterwards)."""
+        self.pause()
+        self.path = None
+        self.duration = 0.0
+
     def seek(self, seconds: float):
         raise NotImplementedError
 
@@ -134,6 +140,14 @@ class MpvPlayer(BasePlayer):
         if self._mpv is not None:
             self._mpv.pause = True
 
+    def clear(self):
+        super().clear()
+        if self._mpv is not None:
+            try:
+                self._mpv.command("stop")
+            except Exception:
+                pass
+
     @property
     def playing(self) -> bool:
         return bool(self._mpv is not None and not self._mpv.pause)
@@ -204,6 +218,11 @@ class StillPlayer(BasePlayer):
 
     def pause(self):
         self._playing = False
+
+    def clear(self):
+        super().clear()
+        self._t = 0.0
+        self._schedule_draw()
 
     @property
     def playing(self) -> bool:
