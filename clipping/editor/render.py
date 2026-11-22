@@ -19,12 +19,13 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from clipping.editor import framing
+from clipping.editor import framing, text_layers
 from clipping.editor.project import Project, Segment, Source, safe_name
 
 
@@ -111,8 +112,11 @@ def audio_filter(seg: Segment, src: Source, index: int, label_out: str) -> str:
     return ",".join(chain) + label_out
 
 
-def build_command(project: Project, out_path: str, q: Quality = EXPORT) -> list[str]:
-    """The full ffmpeg command for this edit (no progress flags)."""
+def build_command(project: Project, out_path: str, q: Quality = EXPORT,
+                  layers: "text_layers.TextLayers | None" = None) -> list[str]:
+    """The full ffmpeg command for this edit (no progress flags).
+    ``layers`` adds captions / hook / pop-ups (.ass) and emoji pictures,
+    drawn in the same pass."""
     if not project.segments:
         raise RenderError("The cut list is empty. Add at least one moment.")
     problems = project.problems()
@@ -129,7 +133,20 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT) -> list[
         parts.append(audio_filter(seg, src, i, f"[a{i}]"))
     n = len(project.segments)
     joined = "".join(f"[v{i}][a{i}]" for i in range(n))
-    parts.append(f"{joined}concat=n={n}:v=1:a=1[vout][aout]")
+    parts.append(f"{joined}concat=n={n}:v=1:a=1[vcat][aout]")
+    last = "vcat"
+    if layers is not None and layers.ass_path:
+        opts = f"filename={_filter_path(layers.ass_path)}"
+        if layers.fonts_dir:
+            opts += f":fontsdir={_filter_path(layers.fonts_dir)}"
+        parts.append(f"[{last}]ass={opts}[vass]")
+        last = "vass"
+    for k, mark in enumerate(layers.emojis if layers is not None else []):
+        cmd += ["-i", mark.png]
+        parts.append(f"[{last}][{n + k}:v]overlay=x={mark.x}:y={mark.y}:eof_action=repeat:"
+                     f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[ve{k}]")
+        last = f"ve{k}"
+    parts.append(f"[{last}]null[vout]")
     cmd += [
         "-filter_complex", ";".join(parts),
         "-map", "[vout]", "-map", "[aout]",
@@ -142,6 +159,29 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT) -> list[
         cmd += ["-profile:v", "high"]
     cmd.append(out_path)
     return cmd
+
+
+def _filter_path(path: str) -> str:
+    """Escape a file path for use as a filter option value."""
+    for ch in ("\\", ":", "'", ",", "[", "]", ";", " "):
+        path = path.replace(ch, "\\" + ch)
+    return path
+
+
+def text_layers_for(project: Project, q: Quality, workdir: str, fonts=None, log=None):
+    """Captions, hook and pop-ups for this render (None when there are none)."""
+    from clipping.editor import styles
+    has_text = (project.captions or (project.hook or {}).get("text")
+                or any(o.get("type") == "text" for o in project.overlays))
+    if not has_text:
+        return None
+    if fonts is None:
+        fonts = styles.ensure_fonts(log=log)
+    layers = text_layers.prepare(project, q.width, q.height, workdir, fonts)
+    for w in layers.warnings:
+        if log:
+            log(w)
+    return layers
 
 
 def safe_zone_filter() -> str:
@@ -205,13 +245,15 @@ def edit_fingerprint(project: Project, q: Quality) -> str:
     data = {
         "q": [q.width, q.height, q.preset, q.crf],
         "segments": [dict(s.__dict__, framing=s.framing.__dict__) for s in project.segments],
+        "text": text_layers.fingerprint_data(project),
         "sources": [[s.id, s.path, os.path.getmtime(s.path) if os.path.exists(s.path) else 0]
                     for s in project.sources],
     }
     return hashlib.sha1(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
-def make_preview(project: Project, project_dir: str, on_progress=None, cancel=None, log=None) -> str:
+def make_preview(project: Project, project_dir: str, on_progress=None, cancel=None, log=None,
+                 fonts=None) -> str:
     """A small, fast copy of the whole edit for watching. Cached."""
     folder = os.path.join(project_dir, "Preview")
     os.makedirs(folder, exist_ok=True)
@@ -227,28 +269,40 @@ def make_preview(project: Project, project_dir: str, on_progress=None, cancel=No
             except OSError:
                 pass
     tmp = out + ".part.mp4"
-    run(build_command(project, tmp, PREVIEW), project.total_length, on_progress, cancel, log)
+    with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
+        layers = text_layers_for(project, PREVIEW, work, fonts, log)
+        run(build_command(project, tmp, PREVIEW, layers), project.total_length, on_progress, cancel, log)
     os.replace(tmp, out)
     return out
 
 
 def export(project: Project, ready_root: str, on_progress=None, cancel=None, log=None,
-           now: datetime | None = None) -> dict:
-    """Render the finished 1080 x 1920 video into 'Ready to post/<date> - <title>/'.
+           now: datetime | None = None, fonts=None) -> dict:
+    """Render the finished 1080 x 1920 video into 'Ready to post/<date> - <title>/'
+    with its cover picture, captions file and YouTube upload text.
     Returns the export record (also added to project.exports)."""
+    from clipping.editor import publish
     now = now or datetime.now()
-    title = safe_name(project.title)
-    folder = os.path.join(ready_root, f"{now:%Y-%m-%d} - {title}")
-    os.makedirs(folder, exist_ok=True)
+    title = safe_name((project.upload or {}).get("title") or project.title)
+    base = os.path.join(ready_root, f"{now:%Y-%m-%d} - {title}")
+    folder, n = base, 2
+    while os.path.exists(folder):
+        folder, n = f"{base} ({n})", n + 1
+    os.makedirs(folder)
     out = os.path.join(folder, f"{title}.mp4")
-    n = 2
-    while os.path.exists(out):
-        out, n = os.path.join(folder, f"{title} ({n}).mp4"), n + 1
     tmp = out[:-4] + ".part.mp4"
     started = time.monotonic()
-    run(build_command(project, tmp, EXPORT), project.total_length, on_progress, cancel, log)
-    os.replace(tmp, out)
+    try:
+        with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
+            layers = text_layers_for(project, EXPORT, work, fonts, log)
+            run(build_command(project, tmp, EXPORT, layers), project.total_length, on_progress, cancel, log)
+        os.replace(tmp, out)
+    except BaseException:
+        if not os.listdir(folder):
+            os.rmdir(folder)
+        raise
     took = round(time.monotonic() - started, 1)
+    extras = publish.write_extras(project, folder, out, fonts=fonts)
     record = {
         "path": out,
         "folder": folder,
@@ -256,6 +310,7 @@ def export(project: Project, ready_root: str, on_progress=None, cancel=None, log
         "seconds_taken": took,
         "at": now.isoformat(timespec="seconds"),
         "size": "1080x1920",
+        "files": [os.path.basename(p) for p in [out, *extras]],
     }
     project.exports.append(record)
     if log:

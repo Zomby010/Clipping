@@ -188,7 +188,7 @@ The app starts with laptop-friendly choices: speech recognition on the CPU (`sma
 A simple editor for making your own cuts: pick any moments from full videos, join them in any order, frame them for 9:16 and export one video for YouTube Shorts, TikTok, Instagram Reels and Facebook Reels. It runs on a laptop CPU: you edit on a small preview copy, and the full-size video is only made when you press **Export**.
 
 ```bash
-sudo apt install python3-tk ffmpeg mpv       # once, on Ubuntu (mpv plays video inside the window)
+sudo apt install python3-tk ffmpeg mpv fonts-noto-color-emoji   # once, on Ubuntu (mpv plays video inside the window; the font draws emoji)
 pip install python-mpv                       # once, in the same Python you run the app with
 bash scripts/install_desktop_app.sh          # adds "Clip Editor" (and Clipping Studio) to the app menu and Desktop
 python clip_editor.py                        # or start it from a terminal
@@ -203,9 +203,12 @@ python clip_editor.py                        # or start it from a terminal
 3. Reorder with **Up** / **Down**, cut one in two with **Split here**, fine-tune with **Start / End ±0.1**. The total length shows under the list (1:08 for the example) and says if it's too long for a platform.
 4. Pick a moment and choose its framing on the right: **Follow the people** (automatic crop), **Crop, I choose the position**, or **Whole picture, blurred behind**. Zoom and speed are there too.
 5. Switch **Watch** to **My cut (9:16)** to see the joined video. **Shade button areas** shows where platform buttons cover the picture.
-6. Press **Export**. The video goes to `Ready to post/<date> - <name>/`.
+6. Open **Captions** and press **Make captions**. It listens to the speech in your moments only (faster-whisper, small model, on the CPU) and keeps the result, so the second time is instant. Click a line to fix its words, **Split at cursor**, **Join with next**, **Delete**, or move its **Start / End ±0.1 s**. Captions stay with their words when you reorder, split or trim moments. Under **Look** change the size, position, word highlight and ALL CAPITALS; each channel (GTA 6, Sports, Kids, Other) has its own look.
+7. Open **Hook and text**. Type a hook line for the first 1 to 4 seconds (2 by default). Add pop-up text where the preview is playing with **Add pop-up here**, and add emoji from **Add emoji ▾**.
+8. On **Export**, play to a good frame and press **Use this frame as the cover** (add cover text if you like). Fill in the YouTube title, description and hashtags.
+9. Press **Export**. Everything goes to `Ready to post/<date> - <title>/`: `<title>.mp4` with the captions, hook and pop-ups burned in, `cover.jpg`, `captions.srt` (upload it in YouTube Studio > Subtitles) and `YouTube.txt` (title, description, hashtags and tags, same layout as Clipping Studio's Upload details). For Kids edits it reminds you to choose "Yes, it's made for kids".
 
-Every change saves itself to `My Edits/<date> - <name>/project.json` and can be undone (**Ctrl+Z**, redo **Ctrl+Y**). Reopen an edit with **Open…**. Captions, Claude's storyline and voice-over, music, sound effects and reactions arrive in the next phases (the panels on the right say which). Without mpv the editor still works but shows still pictures; **Open in video player** plays the video in another window.
+Every change saves itself to `My Edits/<date> - <name>/project.json` and can be undone (**Ctrl+Z**, redo **Ctrl+Y**). Reopen an edit with **Open…**. Claude's storyline and voice-over, music, sound effects and reactions arrive in the next phases (the panels on the right say which). The caption fonts (Montserrat, Anton, Fredoka) download into `custom_fonts/` the first time; without them a plain font is used. Without the emoji font, text still shows but emoji are left out and the app says so. Without mpv the editor still works but shows still pictures; **Open in video player** plays the video in another window.
 
 ## 🚀 Local Quick Start
 
