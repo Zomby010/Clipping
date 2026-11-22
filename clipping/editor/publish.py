@@ -47,6 +47,10 @@ def upload_text(project) -> str:
         "youtube_tags_final": tags,
         "tiktok_caption_final": f"{title} {hashtags}".strip(),
     }
+    from clipping.editor import audio_mix
+    credit = audio_mix.music_credit(project)
+    if credit:  # credit the music in the description itself, so it gets posted
+        item["youtube_description_final"] = f"{item['youtube_description_final']}\n\n{credit}".strip()
     text = library._upload_text(item)
     if project.channel == "Kids":
         text += ("MADE FOR KIDS\n"

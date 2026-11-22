@@ -1,42 +1,36 @@
-# Koleksi Musik Latar (BGM)
+# Background music (BGM)
 
-Folder ini digunakan untuk menyimpan koleksi musik latar (BGM) secara lokal untuk fitur **Auto-BGM & Ducking**.
+Music for Clipping Studio's automatic background music and Clip Editor's **Music and SFX** tab. Both read MP3 files straight from these folders, because downloading music automatically often fails (rate limits, sites changing).
 
-Karena mengunduh file MP3 berukuran besar secara otomatis dari internet (seperti dari Pixabay) sering gagal karena *rate limit* atau perubahan struktur web, aplikasi ini sekarang membaca langsung dari folder ini.
+## How to use it
 
-## Cara Menggunakan
+1. Find a royalty-free MP3 that you are allowed to use in monetised videos.
+2. Put it in the folder for its mood:
+   - `chill/` relaxed, lo-fi
+   - `epic/` cinematic, action
+   - `sad/` sad, emotional
+   - `upbeat/` happy, energetic
+   - `suspense/` mystery, tension
+3. You can put several tracks in one folder.
+   - **Clipping Studio** picks one at random for each render. If a mood folder is empty it uses `chill/`; if that is empty too, it adds no music (the same as `--no-bgm`).
+   - **Clip Editor** lets you pick the exact track, and has **Add your own…** to copy a file here.
+4. Write where each track came from in Clip Editor's **Licence note** box. Notes are saved in `assets/bgm/licences.json` (kept on your computer only), and the note is added to the YouTube description when you export, so the music is credited.
 
-1. Cari file MP3 *royalty-free* (bebas hak cipta).
-2. Download dan masukkan file MP3 tersebut ke dalam folder *mood* yang sesuai di dalam direktori ini:
-   - `chill/` (Untuk musik santai/lofi)
-   - `epic/` (Untuk musik cinematic/action)
-   - `sad/` (Untuk musik sedih/emosional)
-   - `upbeat/` (Untuk musik semangat/ceria)
-   - `suspense/` (Untuk musik misteri/ketegangan)
-3. Anda bisa memasukkan lebih dari satu file MP3 ke dalam satu folder. Aplikasi akan **memilih secara acak (random)** dari file-file tersebut setiap kali merender video.
-4. Jika sebuah folder *mood* kosong, script akan melakukan fallback ke `chill`. Jika `chill` juga kosong, script akan **melewati proses penambahan BGM** (sama seperti jika Anda memakai flag `--no-bgm`).
+## Free places to find music
 
----
+1. **Pixabay Music**
+   - Chill: https://pixabay.com/music/search/mood/chill/
+   - Epic: https://pixabay.com/music/search/mood/epic/
+   - Upbeat: https://pixabay.com/music/search/mood/upbeat/
+2. **YouTube Audio Library**
+   - Open YouTube Studio and go to **Audio Library**.
+   - Filter by mood (Calm, Dramatic, Happy and so on).
+   - Pick tracks marked "No attribution required" to be safest.
+3. **Incompetech** (music by Kevin MacLeod)
+   - https://incompetech.com/music/royalty-free/music.html
+   - These usually need a credit in the description. Put it in the licence note.
 
-## Rekomendasi Sumber Download BGM Gratis
-
-Jika Anda bingung mencari lagu, berikut beberapa sumber gratis dan aman untuk *Youtube/Tiktok*:
-
-1. **Pixabay Music** (Sangat disarankan)
-   - Chill: [https://pixabay.com/music/search/mood/chill/](https://pixabay.com/music/search/mood/chill/)
-   - Epic: [https://pixabay.com/music/search/mood/epic/](https://pixabay.com/music/search/mood/epic/)
-   - Upbeat: [https://pixabay.com/music/search/mood/upbeat/](https://pixabay.com/music/search/mood/upbeat/)
-
-2. **Youtube Audio Library** (Aman dari Copyright Strike)
-   - Buka YouTube Studio Anda, masuk ke menu **Audio Library**.
-   - Filter berdasarkan Mood (Calm, Dramatic, Happy, dll).
-   - Pastikan memilih lagu yang "No attribution required" agar lebih aman.
-
-3. **Incompetech** (Karya Kevin MacLeod)
-   - [https://incompetech.com/music/royalty-free/music.html](https://incompetech.com/music/royalty-free/music.html)
-   - *Catatan: Biasanya memerlukan atribusi (menyebutkan nama di deskripsi).*
-
-## Contoh Struktur Folder yang Benar
+## Example folder layout
 
 ```text
 assets/

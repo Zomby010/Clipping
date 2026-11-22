@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from clipping.editor import framing, text_layers
+from clipping.editor import audio_mix, framing, overlays, text_layers
 from clipping.editor.project import Project, Segment, Source, safe_name
 
 
@@ -113,10 +113,13 @@ def audio_filter(seg: Segment, src: Source, index: int, label_out: str) -> str:
 
 
 def build_command(project: Project, out_path: str, q: Quality = EXPORT,
-                  layers: "text_layers.TextLayers | None" = None) -> list[str]:
+                  layers: "text_layers.TextLayers | None" = None,
+                  visuals: "overlays.VisualLayers | None" = None) -> list[str]:
     """The full ffmpeg command for this edit (no progress flags).
-    ``layers`` adds captions / hook / pop-ups (.ass) and emoji pictures,
-    drawn in the same pass."""
+    ``layers`` adds captions / hook / pop-ups (.ass) and emoji pictures;
+    ``visuals`` adds reaction clips, arrows, circles and the logo (phase 4).
+    Music, sound effects, voices and loudness come from the project.
+    Everything is drawn and mixed in this one pass."""
     if not project.segments:
         raise RenderError("The cut list is empty. Add at least one moment.")
     problems = project.problems()
@@ -132,21 +135,72 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
         parts.append(video_filter(seg, src, q, f"[{i}:v]", f"[v{i}]"))
         parts.append(audio_filter(seg, src, i, f"[a{i}]"))
     n = len(project.segments)
+    k = n  # next input number
     joined = "".join(f"[v{i}][a{i}]" for i in range(n))
-    parts.append(f"{joined}concat=n={n}:v=1:a=1[vcat][aout]")
+    parts.append(f"{joined}concat=n={n}:v=1:a=1[vcat][acat]")
     last = "vcat"
+    reaction_inputs = []
+    # --- phase 4: reactions, arrows and circles, logo (under the text) ---
+    if visuals is not None:
+        W, H = q.width, q.height
+        for j, r in enumerate(visuals.cutaways):
+            cmd += ["-ss", "0", "-t", _num(r.end - r.start), "-i", r.path]
+            reaction_inputs.append((k, r))
+            parts.append(f"[{k}:v]setpts=PTS-STARTPTS+{_num(r.start)}/TB,fps={q.fps},"
+                         f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+                         f"format=yuv420p,setsar=1[rcut{j}]")
+            parts.append(f"[{last}][rcut{j}]overlay=0:0:eof_action=pass:"
+                         f"enable='between(t,{_num(r.start)},{_num(r.end)})'[vcut{j}]")
+            last, k = f"vcut{j}", k + 1
+        for j, r in enumerate(visuals.corners):
+            x, y, bw, bh = r.rect
+            cmd += ["-ss", "0", "-t", _num(r.end - r.start), "-i", r.path]
+            reaction_inputs.append((k, r))
+            parts.append(f"[{k}:v]setpts=PTS-STARTPTS+{_num(r.start)}/TB,fps={q.fps},"
+                         f"scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
+                         f"format=yuva420p[rbox{j}]")
+            k += 1
+            cmd += ["-loop", "1", "-framerate", str(q.fps), "-t", _num(r.end - r.start), "-i", r.mask_png]
+            parts.append(f"[{k}:v]setpts=PTS-STARTPTS+{_num(r.start)}/TB,format=gray[rmask{j}]")
+            parts.append(f"[rbox{j}][rmask{j}]alphamerge[rround{j}]")
+            parts.append(f"[{last}][rround{j}]overlay={x}:{y}:eof_action=pass:"
+                         f"enable='between(t,{_num(r.start)},{_num(r.end)})'[vcor{j}]")
+            last, k = f"vcor{j}", k + 1
+            if r.border_png:
+                cmd += ["-i", r.border_png]
+                parts.append(f"[{last}][{k}:v]overlay={x}:{y}:eof_action=repeat:"
+                             f"enable='between(t,{_num(r.start)},{_num(r.end)})'[vbor{j}]")
+                last, k = f"vbor{j}", k + 1
+        for j, mark in enumerate(visuals.marks):
+            cmd += ["-i", mark.png]
+            parts.append(f"[{last}][{k}:v]overlay=x={mark.x}:y={mark.y}:eof_action=repeat:"
+                         f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[vmk{j}]")
+            last, k = f"vmk{j}", k + 1
+        if visuals.logo is not None:
+            cmd += ["-i", visuals.logo.png]
+            parts.append(f"[{last}][{k}:v]overlay=x={visuals.logo.x}:y={visuals.logo.y}:eof_action=repeat[vlogo]")
+            last, k = "vlogo", k + 1
     if layers is not None and layers.ass_path:
         opts = f"filename={_filter_path(layers.ass_path)}"
         if layers.fonts_dir:
             opts += f":fontsdir={_filter_path(layers.fonts_dir)}"
         parts.append(f"[{last}]ass={opts}[vass]")
         last = "vass"
-    for k, mark in enumerate(layers.emojis if layers is not None else []):
+    for e, mark in enumerate(layers.emojis if layers is not None else []):
         cmd += ["-i", mark.png]
-        parts.append(f"[{last}][{n + k}:v]overlay=x={mark.x}:y={mark.y}:eof_action=repeat:"
-                     f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[ve{k}]")
-        last = f"ve{k}"
+        parts.append(f"[{last}][{k}:v]overlay=x={mark.x}:y={mark.y}:eof_action=repeat:"
+                     f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[ve{e}]")
+        last, k = f"ve{e}", k + 1
     parts.append(f"[{last}]null[vout]")
+    # --- phase 4: sound (original, voices, music, sound effects, loudness) ---
+    if audio_mix.needs_mixer(project, reaction_inputs):
+        has_original = any(s.has_audio for s in project.sources)
+        extra, audio_parts = audio_mix.build(project, project.total_length, k, reaction_inputs,
+                                             main="acat", out="aout", has_original=has_original)
+        cmd += extra
+        parts += audio_parts
+    else:
+        parts.append("[acat]anull[aout]")
     cmd += [
         "-filter_complex", ";".join(parts),
         "-map", "[vout]", "-map", "[aout]",
@@ -182,6 +236,19 @@ def text_layers_for(project: Project, q: Quality, workdir: str, fonts=None, log=
         if log:
             log(w)
     return layers
+
+
+def visual_layers_for(project: Project, q: Quality, workdir: str, log=None):
+    """Reactions, arrows, circles and the logo for this render (None when there are none)."""
+    overlays.refresh(project)
+    has = any(o.get("type") in overlays.ANCHORED for o in project.overlays) or (project.logo or {}).get("path")
+    if not has:
+        return None
+    visuals = overlays.prepare(project, q.width, q.height, workdir)
+    for w in visuals.warnings:
+        if log:
+            log(w)
+    return visuals
 
 
 def safe_zone_filter() -> str:
@@ -246,6 +313,8 @@ def edit_fingerprint(project: Project, q: Quality) -> str:
         "q": [q.width, q.height, q.preset, q.crf],
         "segments": [dict(s.__dict__, framing=s.framing.__dict__) for s in project.segments],
         "text": text_layers.fingerprint_data(project),
+        "visuals": overlays.fingerprint_data(project),
+        "audio": audio_mix.fingerprint_data(project),
         "sources": [[s.id, s.path, os.path.getmtime(s.path) if os.path.exists(s.path) else 0]
                     for s in project.sources],
     }
@@ -271,7 +340,8 @@ def make_preview(project: Project, project_dir: str, on_progress=None, cancel=No
     tmp = out + ".part.mp4"
     with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
         layers = text_layers_for(project, PREVIEW, work, fonts, log)
-        run(build_command(project, tmp, PREVIEW, layers), project.total_length, on_progress, cancel, log)
+        visuals = visual_layers_for(project, PREVIEW, work, log)
+        run(build_command(project, tmp, PREVIEW, layers, visuals), project.total_length, on_progress, cancel, log)
     os.replace(tmp, out)
     return out
 
@@ -295,13 +365,15 @@ def export(project: Project, ready_root: str, on_progress=None, cancel=None, log
     try:
         with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
             layers = text_layers_for(project, EXPORT, work, fonts, log)
-            run(build_command(project, tmp, EXPORT, layers), project.total_length, on_progress, cancel, log)
+            visuals = visual_layers_for(project, EXPORT, work, log)
+            run(build_command(project, tmp, EXPORT, layers, visuals), project.total_length, on_progress, cancel, log)
         os.replace(tmp, out)
     except BaseException:
         if not os.listdir(folder):
             os.rmdir(folder)
         raise
     took = round(time.monotonic() - started, 1)
+    loudness = audio_mix.measure_loudness(out) if audio_mix.loudness_target(project) is not None else None
     extras = publish.write_extras(project, folder, out, fonts=fonts)
     record = {
         "path": out,
@@ -310,9 +382,12 @@ def export(project: Project, ready_root: str, on_progress=None, cancel=None, log
         "seconds_taken": took,
         "at": now.isoformat(timespec="seconds"),
         "size": "1080x1920",
+        "loudness": loudness,
         "files": [os.path.basename(p) for p in [out, *extras]],
     }
     project.exports.append(record)
     if log:
         log(f"Export finished in {took} s for a {round(project.total_length, 1)} s video: {out}")
+        if loudness is not None:
+            log(f"Loudness: {loudness:.1f} LUFS (platforms play at about {audio_mix.LOUDNESS:g}).")
     return record

@@ -33,8 +33,10 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from clipping.editor import captions as C
+from clipping.editor import overlays as O
 from clipping.editor import framing, media, preview, render, timeline
 from clipping.editor import project as P
+from clipping.editor.gui.sound_panels import SoundPanelsMixin
 from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
 
 APP_NAME = "Clip Editor"
@@ -63,9 +65,6 @@ LATER_TABS = (
                  "your cut, in Explain, React or New story mode."),
     ("Voice", 3, "A voice for each script line (free Kenyan, Nigerian or Swahili voices, or your "
                  "own mic), one voice per character in New story mode."),
-    ("Reactions", 4, "Drop 1 to 2 second reaction clips, arrows and circles, and your channel logo."),
-    ("Music and SFX", 4, "Music by mood, sound effects, music that dips under voices, and loudness "
-                         "set for the platforms."),
 )
 
 LANES = ("Video", "Voice-over", "Music", "SFX", "Reactions", "Captions")
@@ -89,7 +88,7 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp(TextPanelsMixin):
+class EditorApp(TextPanelsMixin, SoundPanelsMixin):
     APP_NAME = APP_NAME
 
     def __init__(self, root: tk.Tk):
@@ -365,6 +364,10 @@ class EditorApp(TextPanelsMixin):
         self.captions_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.text_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.export_tab = ScrollPage(self.pages, bg=COLORS["card"])
+        self.sound_tab = ScrollPage(self.pages, bg=COLORS["card"])      # phase 4
+        self.react_tab = ScrollPage(self.pages, bg=COLORS["card"])      # phase 4
+        self.page_frames["Music and SFX"] = self.sound_tab
+        self.page_frames["Reactions"] = self.react_tab
         self.page_frames["Framing"] = self.framing_tab
         self.page_frames["Captions"] = self.captions_tab
         self.page_frames["Hook and text"] = self.text_tab
@@ -377,6 +380,8 @@ class EditorApp(TextPanelsMixin):
         self._build_captions_page(self.captions_tab.inner)
         self._build_text_page(self.text_tab.inner)
         self._build_export_tab(self.export_tab.inner)
+        self._build_sound_page(self.sound_tab.inner)
+        self._build_reactions_page(self.react_tab.inner)
         self.show_page("Framing")
 
     def show_page(self, name: str):
@@ -491,6 +496,7 @@ class EditorApp(TextPanelsMixin):
     def commit(self, note: str | None = None, keep_selection: str | None = None):
         """Call after every change: undo point, autosave, redraw."""
         C.refresh(self.project)  # captions follow the cut list
+        O.refresh(self.project)  # so do sound effects, reactions, arrows and circles
         if self.history.record(self.project):
             self.preview_stale = True
             self.save()
@@ -532,6 +538,8 @@ class EditorApp(TextPanelsMixin):
             self._refresh_captions()
             self._refresh_text_page()
             self._refresh_upload()
+            self._refresh_sound_page()
+            self._refresh_reactions_page()
             self.draw_timeline()
         finally:
             self._loading = False
@@ -576,7 +584,7 @@ class EditorApp(TextPanelsMixin):
             y = top + row * (lane_h + 2)
             c.create_text(8, y + lane_h / 2, text=name, anchor="w", fill=COLORS["muted"], font=(self.base_font[0], 9))
             c.create_rectangle(label_w, y, w - 8, y + lane_h, fill=COLORS["lane"], outline="")
-            if 0 < row < len(LANES) - 1:
+            if name == "Voice-over":
                 c.create_text(label_w + 8, y + lane_h / 2, text="(later phases)", anchor="w",
                               fill="#b0b6c0", font=(self.base_font[0], 8))
         if total <= 0:
@@ -593,6 +601,7 @@ class EditorApp(TextPanelsMixin):
             if x1 - x0 > 18:
                 c.create_text((x0 + x1) / 2, top + lane_h / 2, text=str(p.index + 1), fill=COLORS["text"],
                               font=(self.base_font[0], 9, "bold"))
+        self.draw_sound_lanes(c, label_w, lane_h, top, span, total)
         cy = top + (len(LANES) - 1) * (lane_h + 2)
         for cap in C.visible(self.project):
             x0 = label_w + cap["start"] / total * span
@@ -1091,6 +1100,9 @@ class EditorApp(TextPanelsMixin):
     def _channel_changed(self):
         if self.channel_var.get() != self.project.channel:
             self.project.channel = self.channel_var.get()
+            if (self.project.logo or {}).get("path"):
+                self.project.logo = {}
+            self.apply_channel_logo()
             self.commit()
 
     def new_project(self):
@@ -1100,6 +1112,7 @@ class EditorApp(TextPanelsMixin):
             return
         self.player.pause()
         self.project = P.Project(title=title.strip() or "Untitled edit", channel=self.project.channel)
+        self.apply_channel_logo()
         self.folder = None
         self.history = P.History(self.project)
         self.current_source_id = None
@@ -1171,6 +1184,7 @@ class EditorApp(TextPanelsMixin):
         if self.busy and not messagebox.askyesno(APP_NAME, "A job is still running. Stop it and close?"):
             return
         self.cancel.set()
+        self._stop_sound()
         if self.project.sources or self.project.segments:
             self.save()
         try:
