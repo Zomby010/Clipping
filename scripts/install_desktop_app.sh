@@ -42,6 +42,12 @@ if ! "$PY" -c "import mpv" 2>/dev/null; then
   fi
 fi
 
+# Clip Editor draws emoji on pop-ups and the hook line with a colour emoji font.
+if ! fc-list 2>/dev/null | grep -qi "Noto Color Emoji"; then
+  echo "Installing the colour emoji font for Clip Editor (asks for your password)..."
+  sudo apt-get install -y fonts-noto-color-emoji || echo "Could not install fonts-noto-color-emoji. Emoji will be left out of exports until it is installed."
+fi
+
 APPS_DIR="$HOME/.local/share/applications"
 mkdir -p "$APPS_DIR"
 DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"

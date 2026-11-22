@@ -98,10 +98,16 @@ class Project:
     angle: str = ""
     sources: list[Source] = field(default_factory=list)
     segments: list[Segment] = field(default_factory=list)
+    # Phase 2: captions (see captions.py), caption look changes, the hook
+    # line, pop-up text (in overlays), cover picture and upload text.
+    captions: list[dict] = field(default_factory=list)
+    caption_style: dict = field(default_factory=dict)   # size_scale, position, word_highlight, all_caps
+    hook: dict = field(default_factory=dict)            # {"text": ..., "seconds": 2.0}
+    overlays: list[dict] = field(default_factory=list)  # {"type": "text", start, end, text, position}
+    cover: dict = field(default_factory=dict)           # {"time": edit seconds, "title": ...}
+    upload: dict = field(default_factory=dict)          # {"title", "description", "hashtags"}
     # Later phases. Kept in the file from day one.
     script_lines: list[dict] = field(default_factory=list)
-    captions: list[dict] = field(default_factory=list)
-    overlays: list[dict] = field(default_factory=list)
     audio: dict = field(default_factory=dict)
     exports: list[dict] = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))

@@ -51,7 +51,7 @@ def test_command_uses_fast_seek_per_moment(tmp_path):
     cmd = render.build_command(pr, "out.mp4")
     assert cmd[cmd.index("-i") - 4: cmd.index("-i") + 1] == ["-ss", "62", "-t", "8", "-i"]
     graph = cmd[cmd.index("-filter_complex") + 1]
-    assert "concat=n=2:v=1:a=1" in graph
+    assert "concat=n=2:v=1:a=1[vcat][aout]" in graph and "[vcat]null[vout]" in graph
     assert "crop=608:1080:656:0,scale=1080:1920" in graph
     assert cmd[cmd.index("-preset") + 1] == "veryfast"
     assert cmd[-1] == "out.mp4"
@@ -118,7 +118,7 @@ def test_export_joins_moments_from_two_videos(tmp_path):
     pr.segments[1].framing.mode = "fit_blur"
     seen = []
     rec = render.export(pr, str(tmp_path / "Ready to post"), on_progress=seen.append,
-                        now=datetime(2026, 11, 22, 18, 0))
+                        now=datetime(2026, 11, 22, 18, 0), fonts={})
     assert rec["folder"].endswith("2026-11-22 - Join test")
     out = media.probe(rec["path"])
     assert (out.width, out.height, out.has_audio) == (1080, 1920, True)
