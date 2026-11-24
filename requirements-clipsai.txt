@@ -1,0 +1,6 @@
+# Optional: ClipsAI (https://github.com/ClipsAI/clipsai, MIT) for "Find clips" and
+# "Follow the speaker". Large (WhisperX, pyannote, torch). Also needs:
+#   sudo apt install ffmpeg libmagic1
+# and HF_TOKEN in .env for following the speaker.
+clipsai
+whisperx @ git+https://github.com/m-bain/whisperx.git

@@ -164,7 +164,8 @@ def _save_manifest(ready_root: str, rows: list[dict]) -> str:
 
 
 def is_uploaded(row: dict) -> bool:
-    return any(row.get(k) for k in UPLOADED_KEYS) or row.get("youtube_upload_status") == "uploaded"
+    return (any(row.get(k) for k in UPLOADED_KEYS) or row.get("youtube_upload_status") == "uploaded"
+            or bool(row.get("postiz")))   # sent through Postiz (clipping.integrations.postiz)
 
 
 def manifest_row(project, record: dict, rank: int, edit_folder: str | None = None) -> dict:
@@ -178,6 +179,7 @@ def manifest_row(project, record: dict, rank: int, edit_folder: str | None = Non
         "thumbnail_path": cover if os.path.exists(cover) else None,
         **item,
         "tiktok_caption_final": platforms.text_for(project, "tiktok")["caption"],
+        "instagram_caption": platforms.text_for(project, "instagram")["caption"],
         "facebook_title": platforms.text_for(project, "facebook")["title"],
         "facebook_description": platforms.text_for(project, "facebook")["description"],
         "channel": project.channel,

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "clipping": {
+      "type": "stdio",
+      "command": "bash",
+      "args": ["scripts/run_clipping_mcp.sh"]
+    }
+  }
+}

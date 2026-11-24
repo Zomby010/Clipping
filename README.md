@@ -231,6 +231,21 @@ python clip_editor.py                        # or start it from a terminal
 
 Every change saves itself to `My Edits/<date> - <name>/project.json` and can be undone (**Ctrl+Z**, redo **Ctrl+Y**). Reopen an edit with **Open…**. The starter sound effects in `assets/sfx/` were made for this project by `scripts/make_sfx.py` and are free to use; add your own with **Add your own…**. The caption fonts (Montserrat, Anton, Fredoka) download into `custom_fonts/` the first time; without them a plain font is used. Without the emoji font, text still shows but emoji are left out and the app says so. Without mpv the editor still works but shows still pictures; **Open in video player** plays the video in another window.
 
+### Claude, ClipsAI and Postiz
+
+Claude Code can run the clipping jobs for you. Do the setup once, in the Clipping folder:
+
+```bash
+bash scripts/connect_claude.sh                 # Claude's tools (and Postiz's, when POSTIZ_API_KEY is in .env)
+pip install -r requirements-clipsai.txt        # optional, large: ClipsAI
+```
+
+Then start `claude` in the Clipping folder and ask in plain words, for example "find 30 to 60 s clips in ~/Videos/podcast.mp4 and make an edit of the best three", "frame my latest edit on whoever is talking", "watch my latest edit and add reactions where they fit", "export today's edits" or "schedule the upload list on TikTok and Reels, one every 12 hours from 6 pm tomorrow". The tools are in `clipping/claude_tools.py` (served by `clipping_mcp.py`, listed in `.mcp.json`), and `.claude/settings.json` lets Claude use them without asking each time. Posting is always a dry run first: Claude shows what goes where and when, and posts after you say so.
+
+- **Reactions picked by Claude.** Ask "watch my latest edit and add reactions where they fit". Claude watches the cut (numbered frames from the preview, with the speech and script times), looks at every clip in `assets/reactions/<mood>/`, and adds the ones that fit as a cut-away or a corner box, telling you which and why. If the edit is open in the Clip Editor, click its window and it shows the new version (Undo takes it back).
+- **ClipsAI** ([ClipsAI/clipsai](https://github.com/ClipsAI/clipsai), MIT) finds clips from what people say and follows whoever is talking. It suits talk videos (podcasts, pundits, interviews); for GTA gameplay, Clipping Studio finds better moments. In the Clip Editor: **Find clips…** under your videos, and **Follow the speaker (ClipsAI)** on the Framing tab (needs `HF_TOKEN` in .env and the pyannote/speaker-diarization-3.1 terms accepted on huggingface.co). From a terminal: `python -m clipping.integrations.clipsai_tool find video.mp4 --min 15 --max 60`.
+- **Postiz** ([gitroomhq/postiz-app](https://github.com/gitroomhq/postiz-app)) posts and schedules on TikTok, Instagram Reels, YouTube and Facebook. Use Postiz cloud, or run your own Postiz server for free (Docker, with your own TikTok/Meta/YouTube developer apps; their approval can take weeks). Put `POSTIZ_API_KEY` (Postiz > Settings > Developers > Public API) in `.env`, plus `POSTIZ_URL` for your own server. In the Clip Editor: **Send to Postiz…** under Upload list (tick the accounts, **Check**, then **Post**). From a terminal: `python -m clipping.integrations.postiz channels` and `python -m clipping.integrations.postiz send --channels tiktok,instagram --start "2026-11-25 18:00" --every 12` (add `--post` to really post). Each video is uploaded once and never sent to the same account twice. If you post YouTube through Postiz, don't also run `run_upload.py` on the same videos.
+
 ## 🚀 Local Quick Start
 
 ```bash

@@ -38,6 +38,7 @@ from clipping.editor import framing, media, platforms, preview, render, timeline
 from clipping.editor import project as P
 from clipping.editor import script as S_script  # phase 3
 from clipping.editor.gui.story_panels import StoryPanelsMixin  # phase 3
+from clipping.editor.gui.integration_panels import IntegrationPanelsMixin
 from clipping.editor.gui.platform_panels import PlatformPanelsMixin
 from clipping.editor.gui.review_panels import ReviewPanelsMixin
 from clipping.editor.gui.sound_panels import SoundPanelsMixin
@@ -87,7 +88,8 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin):
+class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin,
+                IntegrationPanelsMixin):
     APP_NAME = APP_NAME
 
     def __init__(self, root: tk.Tk):
@@ -260,7 +262,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         btns = ttk.Frame(parent, style="Card.TFrame")
         btns.pack(fill="x", pady=(4, 8))
         ttk.Button(btns, text="Add video…", command=self.add_video).pack(side="left")
-        ttk.Button(btns, text="Remove video", command=self.remove_video).pack(side="left", padx=4)
+        ttk.Button(btns, text="Remove", command=self.remove_video).pack(side="left", padx=4)
+        ttk.Button(btns, text="Find clips…", command=self.find_clips_with_clipsai).pack(side="left")
 
         ttk.Label(parent, text="Type moments from the selected video", style="Card.TLabel").pack(anchor="w")
         type_row = ttk.Frame(parent, style="Card.TFrame")
@@ -369,7 +372,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             ttk.Label(page, text=f"Coming in phase {phase}.", style="Help.TLabel").pack(anchor="w", pady=(2, 8))
             ttk.Label(page, text=text, style="Card.TLabel", wraplength=270, justify="left").pack(anchor="w")
             self.page_frames[name] = page
-        self.framing_tab = ttk.Frame(self.pages, style="Card.TFrame", padding=12)
+        self.framing_tab = ScrollPage(self.pages, bg=COLORS["card"])   # scrolls: it grew with phase 3
         self.captions_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.text_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.export_tab = ScrollPage(self.pages, bg=COLORS["card"])
@@ -393,7 +396,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         for name in order:
             ttk.Radiobutton(rail, text=name, value=name, variable=self.page_var, style="Rail.Toolbutton",
                             command=lambda n=name: self.show_page(n)).pack(fill="x", pady=1)
-        self._build_framing_tab(self.framing_tab)
+        self._build_framing_tab(self.framing_tab.inner)
         self._build_captions_page(self.captions_tab.inner)
         self._build_text_page(self.text_tab.inner)
         self._build_export_tab(self.export_tab.inner)
@@ -440,6 +443,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         sp.bind("<<ComboboxSelected>>", lambda e: self._framing_changed())
         self._build_original_level(t)   # phase 3: the moment's own sound
         ttk.Button(t, text="Use for every moment", command=self.framing_to_all).pack(anchor="w", pady=(14, 4))
+        ttk.Button(t, text="Follow the speaker (ClipsAI)",
+                   command=self.follow_speaker_with_clipsai).pack(anchor="w", pady=(0, 4))
         self.auto_info = tk.StringVar()
         ttk.Label(t, textvariable=self.auto_info, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
 
@@ -463,6 +468,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
 
     def _bind_keys(self):
         r = self.root
+        r.bind("<FocusIn>", self._reload_if_changed, add="+")   # picks up changes Claude made to this edit
         r.bind_all("<Control-z>", lambda e: self.undo())
         r.bind_all("<Control-y>", lambda e: self.redo())
         r.bind_all("<Control-Z>", lambda e: self.redo())
@@ -511,10 +517,29 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         try:
             self.project.folder = self.ensure_folder()   # phase 3: voice_clips() finds the voice files from here
             P.save(self.project, self.project.folder)
+            self._saved_mtime = self._file_mtime()
             if note:
                 self.status(note)
         except OSError as e:
             self.status(f"Could not save: {e}")
+
+    def _file_mtime(self) -> float:
+        try:
+            return os.path.getmtime(os.path.join(self.folder, P.PROJECT_FILE)) if self.folder else 0.0
+        except OSError:
+            return 0.0
+
+    def _reload_if_changed(self, _event=None):
+        """Claude (or another window) changed this edit's file: show that version."""
+        if self.busy or not self.folder or getattr(self, "_saved_mtime", None) is None:
+            return
+        if self._file_mtime() > self._saved_mtime + 0.5:
+            keep = self.history
+            self.open_project(self.folder, quiet=True)
+            keep.record(self.project)          # Undo goes back to before the change
+            self.history = keep
+            self.status("This edit was changed outside the window (by Claude?). Showing the new version; "
+                        "Undo takes it back.")
 
     def commit(self, note: str | None = None, keep_selection: str | None = None):
         """Call after every change: undo point, autosave, redraw."""
@@ -1201,6 +1226,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         self.player.pause()
         self.project, self.folder = project, folder
         self.history = P.History(project)
+        self._saved_mtime = self._file_mtime()
         self.settings["last_project"] = folder
         save_settings(self.settings)
         self.preview_path = None

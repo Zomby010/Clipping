@@ -1,0 +1,2 @@
+# Lets Claude Code run the clipping tools (clipping_mcp.py, registered in .mcp.json).
+mcp>=1.10
