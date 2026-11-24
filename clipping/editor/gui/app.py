@@ -34,8 +34,9 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from clipping.editor import captions as C
 from clipping.editor import overlays as O
-from clipping.editor import framing, media, preview, render, timeline
+from clipping.editor import framing, media, platforms, preview, render, timeline
 from clipping.editor import project as P
+from clipping.editor.gui.platform_panels import PlatformPanelsMixin
 from clipping.editor.gui.review_panels import ReviewPanelsMixin
 from clipping.editor.gui.sound_panels import SoundPanelsMixin
 from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
@@ -89,7 +90,7 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
+class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin):
     APP_NAME = APP_NAME
 
     def __init__(self, root: tk.Tk):
@@ -190,7 +191,12 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
         self.progress = ttk.Progressbar(bar, length=260, maximum=1.0)
         self.progress.pack(side="right", padx=8)
 
-        bottom = ttk.LabelFrame(outer, text="Timeline", style="Card.TLabelframe", padding=6)
+        head = ttk.Frame(outer, style="Page.TFrame")
+        ttk.Label(head, text="Timeline", style="Card.TLabel",
+                  font=(self.base_font[0], self.base_font[1], "bold")).pack(side="left")
+        ttk.Label(head, text="   Keys: Space = play/pause   ←/→ = 1 s   I / O = mark start / end",
+                  style="Help.TLabel").pack(side="left")
+        bottom = ttk.LabelFrame(outer, labelwidget=head, style="Card.TLabelframe", padding=6)
         bottom.pack(side="bottom", fill="x", pady=(8, 0))
         self.timeline = tk.Canvas(bottom, height=100, background=COLORS["card"], highlightthickness=0)
         self.timeline.pack(fill="x")
@@ -222,7 +228,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
         ttk.Label(top, text=APP_NAME, style="Title.TLabel").pack(side="left")
         ttk.Label(top, text="  Name:", style="Sub.TLabel").pack(side="left", padx=(14, 4))
         self.title_var = tk.StringVar()
-        title = ttk.Entry(top, textvariable=self.title_var, width=26)
+        title = ttk.Entry(top, textvariable=self.title_var, width=16)
         title.pack(side="left")
         title.bind("<FocusOut>", lambda e: self._title_changed())
         title.bind("<Return>", lambda e: (self._title_changed(), self.root.focus_set()))
@@ -242,6 +248,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
         self.undo_btn.pack(side="right", padx=(0, 4))
         ttk.Button(top, text="Open…", width=7, command=self.open_dialog).pack(side="right", padx=(0, 12))
         ttk.Button(top, text="New", width=5, command=self.new_project).pack(side="right", padx=(0, 4))
+        ttk.Button(top, text="My Clips…", command=self.open_my_clips_dialog).pack(side="right", padx=(0, 4))
 
     def _build_cut_list(self, parent):
         ttk.Label(parent, text="Your videos", style="Card.TLabel").pack(anchor="w")
@@ -336,9 +343,13 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
         info = ttk.Frame(parent, style="Card.TFrame")
         info.pack(fill="x", pady=(4, 0))
         ttk.Label(info, textvariable=self.marks_var, style="Card.TLabel").pack(side="left")
+        self.zone_var = tk.StringVar(value=platforms.ZONE_CHOICES[0][0])
+        zones = ttk.Combobox(info, textvariable=self.zone_var, width=9, state="readonly",
+                             values=[name for name, _ in platforms.ZONE_CHOICES])
+        zones.pack(side="right", padx=(4, 0))
+        zones.bind("<<ComboboxSelected>>", lambda e: self._zones_changed())
         ttk.Checkbutton(info, text="Shade button areas", variable=self.safe_var,
                         style="Card.TCheckbutton", command=self._overlay_changed).pack(side="right")
-        ttk.Label(info, text="Space = play/pause   ←/→ = 1 s", style="Help.TLabel").pack(side="right", padx=10)
         if self.player.name != "mpv":
             ttk.Label(parent, style="Help.TLabel", wraplength=600, justify="left",
                       text="Smooth playback needs mpv: sudo apt install mpv libmpv2 && pip install python-mpv. "
@@ -442,6 +453,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
         self.exports_var = tk.StringVar()
         ttk.Label(t, textvariable=self.exports_var, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
         self._build_upload_section(t)
+        self._build_platform_section(t)
 
     def _bind_keys(self):
         r = self.root
@@ -545,6 +557,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
             self._refresh_sound_page()
             self._refresh_reactions_page()
             self._refresh_check_page()
+            self._refresh_platform_section()
             self.draw_timeline()
         finally:
             self._loading = False
@@ -1012,6 +1025,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
             snap, record = result
             self._apply_auto(snap)
             self.project.exports.append(record)
+            self.add_export_to_manifest(snap, record)
             self.history.absorb(self.project)
             self.save()
             self._refresh_export()
@@ -1081,6 +1095,8 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
                 kind, payload = self.jobs.get_nowait()
                 if kind == "progress":
                     self.progress["value"] = payload
+                elif kind == "status":
+                    self.status(payload)
                 elif kind == "done":
                     self._job_finished()
                     fn, result = payload
@@ -1201,7 +1217,11 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
             self.root.destroy()
 
 
-def main():
+def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(prog="clip_editor.py", description=APP_NAME)
+    parser.add_argument("--clip", help="open a Clipping Studio clip (a video in My Clips) as a new edit")
+    args = parser.parse_args(argv)
     try:
         media.require_ffmpeg()
     except media.MediaError as e:
@@ -1213,7 +1233,9 @@ def main():
             root.iconphoto(True, tk.PhotoImage(file=icon))
         except tk.TclError:
             pass
-    EditorApp(root)
+    app = EditorApp(root)
+    if args.clip:
+        root.after(300, lambda: app.open_clip(os.path.abspath(args.clip)))
     root.mainloop()
 
 

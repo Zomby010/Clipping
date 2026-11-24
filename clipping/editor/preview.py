@@ -34,6 +34,7 @@ class BasePlayer:
         self.path: str | None = None
         self.duration = 0.0
         self._overlay = False
+        self.zones = SAFE_ZONES
         self.widget = tk.Frame(parent, background=bg, highlightthickness=0)
 
     # interface -----------------------------------------------------------
@@ -67,6 +68,11 @@ class BasePlayer:
 
     def set_overlay(self, on: bool):
         self._overlay = bool(on)
+
+    def set_zones(self, zones):
+        """Which button areas to shade (one platform's, or all of them)."""
+        self.zones = zones or SAFE_ZONES
+        self.set_overlay(self._overlay)
 
     def close(self):
         pass
@@ -175,7 +181,7 @@ class MpvPlayer(BasePlayer):
         if self._mpv is None:
             return
         try:
-            self._mpv.vf = f"lavfi=[{safe_zone_filter()}]" if self._overlay else ""
+            self._mpv.vf = f"lavfi=[{safe_zone_filter(self.zones)}]" if self._overlay else ""
         except Exception:
             pass
 
@@ -279,7 +285,7 @@ class StillPlayer(BasePlayer):
         x0, y0 = (w - iw) / 2, (h - ih) / 2
         c.create_image(w / 2, h / 2, image=self._img)
         if self._overlay:
-            for _name, fx, fy, fw, fh in SAFE_ZONES:
+            for _name, fx, fy, fw, fh in self.zones:
                 c.create_rectangle(x0 + fx * iw, y0 + fy * ih, x0 + (fx + fw) * iw, y0 + (fy + fh) * ih,
                                    fill="#000000", stipple="gray50", outline="")
 
