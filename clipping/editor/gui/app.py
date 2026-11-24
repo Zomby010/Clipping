@@ -33,10 +33,14 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from clipping.editor import captions as C
-from clipping.editor import framing, media, preview, render, timeline
+from clipping.editor import overlays as O
+from clipping.editor import framing, media, platforms, preview, render, timeline
 from clipping.editor import project as P
 from clipping.editor import script as S_script  # phase 3
 from clipping.editor.gui.story_panels import StoryPanelsMixin  # phase 3
+from clipping.editor.gui.platform_panels import PlatformPanelsMixin
+from clipping.editor.gui.review_panels import ReviewPanelsMixin
+from clipping.editor.gui.sound_panels import SoundPanelsMixin
 from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
 
 APP_NAME = "Clip Editor"
@@ -60,11 +64,7 @@ COLORS = {
     "seg_sel": "#e8590c",
 }
 
-LATER_TABS = (
-    ("Reactions", 4, "Drop 1 to 2 second reaction clips, arrows and circles, and your channel logo."),
-    ("Music and SFX", 4, "Music by mood, sound effects, music that dips under voices, and loudness "
-                         "set for the platforms."),
-)
+LATER_TABS = ()   # every phase is built now
 
 LANES = ("Video", "Voice-over", "Music", "SFX", "Reactions", "Captions")
 
@@ -87,7 +87,7 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp(TextPanelsMixin, StoryPanelsMixin):
+class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin):
     APP_NAME = APP_NAME
 
     def __init__(self, root: tk.Tk):
@@ -188,7 +188,12 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         self.progress = ttk.Progressbar(bar, length=260, maximum=1.0)
         self.progress.pack(side="right", padx=8)
 
-        bottom = ttk.LabelFrame(outer, text="Timeline", style="Card.TLabelframe", padding=6)
+        head = ttk.Frame(outer, style="Page.TFrame")
+        ttk.Label(head, text="Timeline", style="Card.TLabel",
+                  font=(self.base_font[0], self.base_font[1], "bold")).pack(side="left")
+        ttk.Label(head, text="   Keys: Space = play/pause   ←/→ = 1 s   I / O = mark start / end",
+                  style="Help.TLabel").pack(side="left")
+        bottom = ttk.LabelFrame(outer, labelwidget=head, style="Card.TLabelframe", padding=6)
         bottom.pack(side="bottom", fill="x", pady=(8, 0))
         self.timeline = tk.Canvas(bottom, height=100, background=COLORS["card"], highlightthickness=0)
         self.timeline.pack(fill="x")
@@ -220,7 +225,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         ttk.Label(top, text=APP_NAME, style="Title.TLabel").pack(side="left")
         ttk.Label(top, text="  Name:", style="Sub.TLabel").pack(side="left", padx=(14, 4))
         self.title_var = tk.StringVar()
-        title = ttk.Entry(top, textvariable=self.title_var, width=26)
+        title = ttk.Entry(top, textvariable=self.title_var, width=16)
         title.pack(side="left")
         title.bind("<FocusOut>", lambda e: self._title_changed())
         title.bind("<Return>", lambda e: (self._title_changed(), self.root.focus_set()))
@@ -240,6 +245,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         self.undo_btn.pack(side="right", padx=(0, 4))
         ttk.Button(top, text="Open…", width=7, command=self.open_dialog).pack(side="right", padx=(0, 12))
         ttk.Button(top, text="New", width=5, command=self.new_project).pack(side="right", padx=(0, 4))
+        ttk.Button(top, text="My Clips…", command=self.open_my_clips_dialog).pack(side="right", padx=(0, 4))
 
     def _build_cut_list(self, parent):
         ttk.Label(parent, text="Your videos", style="Card.TLabel").pack(anchor="w")
@@ -334,9 +340,13 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         info = ttk.Frame(parent, style="Card.TFrame")
         info.pack(fill="x", pady=(4, 0))
         ttk.Label(info, textvariable=self.marks_var, style="Card.TLabel").pack(side="left")
+        self.zone_var = tk.StringVar(value=platforms.ZONE_CHOICES[0][0])
+        zones = ttk.Combobox(info, textvariable=self.zone_var, width=9, state="readonly",
+                             values=[name for name, _ in platforms.ZONE_CHOICES])
+        zones.pack(side="right", padx=(4, 0))
+        zones.bind("<<ComboboxSelected>>", lambda e: self._zones_changed())
         ttk.Checkbutton(info, text="Shade button areas", variable=self.safe_var,
                         style="Card.TCheckbutton", command=self._overlay_changed).pack(side="right")
-        ttk.Label(info, text="Space = play/pause   ←/→ = 1 s", style="Help.TLabel").pack(side="right", padx=10)
         if self.player.name != "mpv":
             ttk.Label(parent, style="Help.TLabel", wraplength=600, justify="left",
                       text="Smooth playback needs mpv: sudo apt install mpv libmpv2 && pip install python-mpv. "
@@ -369,11 +379,17 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         self.page_frames["Story"] = self.story_tab
         self.page_frames["Voice"] = self.voice_tab
         # --- end phase 3 ---
+        self.sound_tab = ScrollPage(self.pages, bg=COLORS["card"])      # phase 4
+        self.react_tab = ScrollPage(self.pages, bg=COLORS["card"])      # phase 4
+        self.page_frames["Music and SFX"] = self.sound_tab
+        self.page_frames["Reactions"] = self.react_tab
+        self.check_tab = ScrollPage(self.pages, bg=COLORS["card"])      # phase 5
+        self.page_frames["Check"] = self.check_tab
         self.page_frames["Framing"] = self.framing_tab
         self.page_frames["Captions"] = self.captions_tab
         self.page_frames["Hook and text"] = self.text_tab
         self.page_frames["Export"] = self.export_tab
-        order = ("Story", "Captions", "Hook and text", "Voice", "Reactions", "Music and SFX", "Framing", "Export")
+        order = ("Story", "Captions", "Hook and text", "Voice", "Reactions", "Music and SFX", "Framing", "Check", "Export")
         for name in order:
             ttk.Radiobutton(rail, text=name, value=name, variable=self.page_var, style="Rail.Toolbutton",
                             command=lambda n=name: self.show_page(n)).pack(fill="x", pady=1)
@@ -383,6 +399,9 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         self._build_export_tab(self.export_tab.inner)
         self._build_story_page(self.story_tab.inner)   # phase 3
         self._build_voice_page(self.voice_tab.inner)   # phase 3
+        self._build_sound_page(self.sound_tab.inner)
+        self._build_reactions_page(self.react_tab.inner)
+        self._build_check_page(self.check_tab.inner)
         self.show_page("Framing")
 
     def show_page(self, name: str):
@@ -440,6 +459,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         self.exports_var = tk.StringVar()
         ttk.Label(t, textvariable=self.exports_var, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
         self._build_upload_section(t)
+        self._build_platform_section(t)
 
     def _bind_keys(self):
         r = self.root
@@ -499,6 +519,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
     def commit(self, note: str | None = None, keep_selection: str | None = None):
         """Call after every change: undo point, autosave, redraw."""
         C.refresh(self.project)  # captions follow the cut list
+        O.refresh(self.project)  # so do sound effects, reactions, arrows and circles
         if self.history.record(self.project):
             self.preview_stale = True
             self.save()
@@ -541,6 +562,10 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
             self._refresh_text_page()
             self._refresh_upload()
             self._refresh_story()   # phase 3
+            self._refresh_sound_page()
+            self._refresh_reactions_page()
+            self._refresh_check_page()
+            self._refresh_platform_section()
             self.draw_timeline()
         finally:
             self._loading = False
@@ -586,9 +611,6 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
             y = top + row * (lane_h + 2)
             c.create_text(8, y + lane_h / 2, text=name, anchor="w", fill=COLORS["muted"], font=(self.base_font[0], 9))
             c.create_rectangle(label_w, y, w - 8, y + lane_h, fill=COLORS["lane"], outline="")
-            if 1 < row < len(LANES) - 1:   # phase 3 draws the Voice-over lane (row 1)
-                c.create_text(label_w + 8, y + lane_h / 2, text="(later phases)", anchor="w",
-                              fill="#b0b6c0", font=(self.base_font[0], 8))
         if total <= 0:
             return
         span = (w - 8 - label_w)
@@ -613,6 +635,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
                                fill="#d3f9d8" if made else "#fff3bf", outline="#2f9e44" if made else "#e67700",
                                tags=(f"line_{ln['id']}",))
         # --- end phase 3 ---
+        self.draw_sound_lanes(c, label_w, lane_h, top, span, total)
         cy = top + (len(LANES) - 1) * (lane_h + 2)
         for cap in C.visible(self.project):
             x0 = label_w + cap["start"] / total * span
@@ -1022,6 +1045,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         if self.busy:
             messagebox.showinfo(APP_NAME, "Wait for the current job to finish, or press Stop.")
             return
+        if not self.confirm_checks_before_export():
+            return
         self.player.pause()
         snapshot = P.Project.from_dict(self.project.to_dict())
         snapshot.folder = self.ensure_folder()   # phase 3: so the voices are found
@@ -1035,6 +1060,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
             snap, record = result
             self._apply_auto(snap)
             self.project.exports.append(record)
+            self.add_export_to_manifest(snap, record)
             self.history.absorb(self.project)
             self.save()
             self._refresh_export()
@@ -1104,6 +1130,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
                 kind, payload = self.jobs.get_nowait()
                 if kind == "progress":
                     self.progress["value"] = payload
+                elif kind == "status":
+                    self.status(payload)
                 elif kind == "done":
                     self._job_finished()
                     fn, result = payload
@@ -1130,6 +1158,9 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
     def _channel_changed(self):
         if self.channel_var.get() != self.project.channel:
             self.project.channel = self.channel_var.get()
+            if (self.project.logo or {}).get("path"):
+                self.project.logo = {}
+            self.apply_channel_logo()
             self.commit()
 
     def new_project(self):
@@ -1139,6 +1170,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
             return
         self.player.pause()
         self.project = P.Project(title=title.strip() or "Untitled edit", channel=self.project.channel)
+        self.apply_channel_logo()
+        self.apply_template_to_new_edit()
         self.folder = None
         self.history = P.History(self.project)
         self.current_source_id = None
@@ -1203,6 +1236,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
         if self.busy and not messagebox.askyesno(APP_NAME, "A job is still running. Stop it and close?"):
             return
         self.cancel.set()
+        self._stop_sound()
         if self.project.sources or self.project.segments:
             self.save()
         try:
@@ -1211,7 +1245,11 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin):
             self.root.destroy()
 
 
-def main():
+def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(prog="clip_editor.py", description=APP_NAME)
+    parser.add_argument("--clip", help="open a Clipping Studio clip (a video in My Clips) as a new edit")
+    args = parser.parse_args(argv)
     try:
         media.require_ffmpeg()
     except media.MediaError as e:
@@ -1223,7 +1261,9 @@ def main():
             root.iconphoto(True, tk.PhotoImage(file=icon))
         except tk.TclError:
             pass
-    EditorApp(root)
+    app = EditorApp(root)
+    if args.clip:
+        root.after(300, lambda: app.open_clip(os.path.abspath(args.clip)))
     root.mainloop()
 
 

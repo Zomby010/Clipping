@@ -35,19 +35,30 @@ def upload_fields(project) -> dict:
     return up
 
 
-def upload_text(project) -> str:
+def upload_item(project) -> dict:
+    """The upload fields in the same keys Clipping Studio's manifest uses
+    (youtube_title_final, youtube_description_final, hastag, ...)."""
     up = upload_fields(project)
     title = up["title"][:TITLE_LIMIT]
     hashtags = " ".join(up["hashtags"].split())
     tags = [t.lstrip("#") for t in hashtags.split() if t.lstrip("#")]
     item = {
         "youtube_title_final": title,
-        "youtube_description_final": up["description"].strip(),
+        "youtube_description_final": "\n\n".join(
+            t for t in (up["description"].strip(), up.get("description_footer", "").strip()) if t),
         "hastag": hashtags,
         "youtube_tags_final": tags,
         "tiktok_caption_final": f"{title} {hashtags}".strip(),
     }
-    text = library._upload_text(item)
+    from clipping.editor import audio_mix
+    credit = audio_mix.music_credit(project)
+    if credit:  # credit the music in the description itself, so it gets posted
+        item["youtube_description_final"] = f"{item['youtube_description_final']}\n\n{credit}".strip()
+    return item
+
+
+def upload_text(project) -> str:
+    text = library._upload_text(upload_item(project))
     if project.channel == "Kids":
         text += ("MADE FOR KIDS\n"
                  "Yes. When uploading, choose \"Yes, it's made for kids\" (YouTube requires this).\n")
@@ -111,4 +122,6 @@ def write_extras(project, folder: str, video_path: str, fonts: dict | None = Non
     with open(txt, "w", encoding="utf-8") as f:
         f.write(upload_text(project))
     written.append(txt)
+    from clipping.editor import platforms   # phase 6: TikTok, Instagram, Facebook text
+    written += platforms.write_files(project, folder)
     return written

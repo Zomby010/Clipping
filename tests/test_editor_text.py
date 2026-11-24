@@ -173,7 +173,8 @@ def test_export_writes_video_cover_captions_and_upload_text(tmp_path):
     pr.upload = {"title": "What a goal", "description": "", "hashtags": "#football"}
     rec = render.export(pr, str(tmp_path / "Ready"), fonts={}, now=datetime(2026, 11, 22, 20, 0))
     files = sorted(os.listdir(rec["folder"]))
-    assert files == ["What a goal.mp4", "YouTube.txt", "captions.srt", "cover.jpg"]
+    assert files == ["Facebook.txt", "Instagram.txt", "TikTok.txt", "What a goal.mp4", "YouTube.txt",
+                     "captions.srt", "cover.jpg"]
     out = media.probe(rec["path"])
     assert (out.width, out.height) == (1080, 1920) and abs(out.duration - 4) < 0.15
     srt = open(os.path.join(rec["folder"], "captions.srt"), encoding="utf-8").read()

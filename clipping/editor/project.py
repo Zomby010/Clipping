@@ -118,7 +118,14 @@ class Project:
     # --- end phase 3 ---
     # Later phases. Kept in the file from day one.
     script_lines: list[dict] = field(default_factory=list)
+    # Phase 4: {"music": {...}, "sfx": [...], "loudness": -14} (see audio_mix.py,
+    # overlays.py). Reactions, arrows and circles go in overlays.
     audio: dict = field(default_factory=dict)
+    # --- phase 4: channel logo {"path", "corner", "size", "opacity"} ---
+    logo: dict = field(default_factory=dict)
+    # --- phase 5: last Claude review, and defaults from the channel template ---
+    review: dict = field(default_factory=dict)          # {"suggestions": [...], "at": ...}
+    defaults: dict = field(default_factory=dict)        # {"framing": "fit_blur"}
     exports: list[dict] = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     version: int = PROJECT_VERSION
@@ -172,6 +179,8 @@ class Project:
         if end <= start:
             raise ValueError("The end must be after the start.")
         seg = Segment(source_id=source_id, source_in=max(0.0, start), source_out=end)
+        if (self.defaults or {}).get("framing") in FRAMING_MODES:
+            seg.framing.mode = self.defaults["framing"]
         if at is None:
             self.segments.append(seg)
         else:

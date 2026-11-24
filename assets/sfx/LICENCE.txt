@@ -1,0 +1,10 @@
+Sound effects in this folder
+
+Every file here was made for this project by scripts/make_sfx.py from plain
+maths (sine waves, noise and fades). They are free to use in any video,
+including monetised ones, with no credit needed.
+
+Add your own sounds with "Add your own..." in Clip Editor, or by copying
+.wav / .mp3 / .ogg files into a folder here (one folder per type). Only add
+sounds you are allowed to use, and write where they came from in
+licences.json if they need a credit.

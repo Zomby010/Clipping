@@ -48,7 +48,7 @@ def _clip(path, start, end, gain=1.0, line_id="ln_1"):
 def test_without_voices_the_command_is_unchanged(tmp_path):
     pr = _project(tmp_path)
     g = _graph(render.build_command(pr, "o.mp4"))
-    assert "concat=n=2:v=1:a=1[vcat][aout]" in g and "adelay" not in g and "amix" not in g and "volume" not in g
+    assert "concat=n=2:v=1:a=1[vcat][acat]" in g and "adelay" not in g and "amix" not in g and "volume" not in g
 
 
 def test_voices_are_delayed_into_place_and_mixed(tmp_path):
@@ -56,7 +56,7 @@ def test_voices_are_delayed_into_place_and_mixed(tmp_path):
     cmd = render.build_command(pr, "o.mp4", voices=[_clip("/v/a.mp3", 1.25, 2.25), _clip("/v/b.mp3", 4.0, 5.0, gain=0.5)])
     g = _graph(cmd)
     assert "[acat]" in g and "adelay=1250|1250" in g and "adelay=4000|4000" in g and "volume=0.5" in g
-    assert "amix=inputs=3:duration=first:dropout_transition=0:normalize=0" in g and g.rstrip().count("[aout]") >= 1
+    assert "amix=inputs=3:duration=first:dropout_transition=0" in g and g.rstrip().count("[aout]") >= 1   # the sound mixer (audio_mix)
     assert cmd.count("-i") == 4 and "/v/a.mp3" in cmd and "/v/b.mp3" in cmd     # 2 moments + 2 voices
     assert cmd[cmd.index("-map") + 1] == "[vout]" and "[aout]" in cmd
 
@@ -89,7 +89,7 @@ def test_explain_dips_the_original_under_each_voice_and_other_modes_do_not(tmp_p
     pr = _project(tmp_path, mode="explain")
     voices = [_clip("/v/a.mp3", 1.0, 2.0), _clip("/v/b.mp3", 4.0, 5.0)]
     g = _graph(render.build_command(pr, "o.mp4", voices=voices))
-    assert "[acat]volume='1-0.75*max(" in g and ":eval=frame[adip]" in g and "[adip]" in g.split("amix")[0].split(";")[-1]
+    assert "[acat]volume='1-0.75*max(" in g and ":eval=frame[adip]" in g and "[adip]anull[a_main]" in g   # the dipped original goes into the mixer
     assert "t-(0.85)" in g and "(5.15)-t" in g                                   # fades of 0.15 s either side
     for mode in ("react", "new_story"):
         pr.mode = mode
