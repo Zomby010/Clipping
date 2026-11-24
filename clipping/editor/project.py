@@ -108,7 +108,11 @@ class Project:
     upload: dict = field(default_factory=dict)          # {"title", "description", "hashtags"}
     # Later phases. Kept in the file from day one.
     script_lines: list[dict] = field(default_factory=list)
+    # Phase 4: {"music": {...}, "sfx": [...], "loudness": -14} (see audio_mix.py,
+    # overlays.py). Reactions, arrows and circles go in overlays.
     audio: dict = field(default_factory=dict)
+    # --- phase 4: channel logo {"path", "corner", "size", "opacity"} ---
+    logo: dict = field(default_factory=dict)
     exports: list[dict] = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     version: int = PROJECT_VERSION

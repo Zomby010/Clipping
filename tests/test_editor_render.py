@@ -51,7 +51,8 @@ def test_command_uses_fast_seek_per_moment(tmp_path):
     cmd = render.build_command(pr, "out.mp4")
     assert cmd[cmd.index("-i") - 4: cmd.index("-i") + 1] == ["-ss", "62", "-t", "8", "-i"]
     graph = cmd[cmd.index("-filter_complex") + 1]
-    assert "concat=n=2:v=1:a=1[vcat][aout]" in graph and "[vcat]null[vout]" in graph
+    assert "concat=n=2:v=1:a=1[vcat][acat]" in graph and "[vcat]null[vout]" in graph
+    assert graph.endswith("loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")  # platforms' loudness
     assert "crop=608:1080:656:0,scale=1080:1920" in graph
     assert cmd[cmd.index("-preset") + 1] == "veryfast"
     assert cmd[-1] == "out.mp4"
