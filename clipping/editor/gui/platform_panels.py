@@ -73,6 +73,7 @@ class PlatformPanelsMixin:
         ttk.Button(row, text="Copy YouTube command", command=lambda: self.copy_upload_command("youtube")).pack(side="left")
         ttk.Button(t, text="Copy Facebook command",
                    command=lambda: self.copy_upload_command("facebook")).pack(anchor="w", pady=(4, 0))
+        self._build_postiz_section(t)
 
     def _plat_key(self) -> str:
         return dict(PLATFORM_NAMES).get(self.plat_var.get(), "tiktok")

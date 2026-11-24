@@ -72,8 +72,11 @@ API_KEYS = [
     ("ANTHROPIC_API_KEY", "Anthropic API key (optional: only if not using Claude Code)",
      "https://platform.claude.com/settings/keys"),
     ("PEXELS_API_KEY", "Pexels API key (for B-roll stock footage)", "https://www.pexels.com/api/"),
-    ("HF_TOKEN", "Hugging Face token (only for podcast split-screen)", "https://huggingface.co/settings/tokens"),
+    ("HF_TOKEN", "Hugging Face token (podcast split-screen, ClipsAI follow the speaker)", "https://huggingface.co/settings/tokens"),
     ("NVIDIA_API_KEY", "NVIDIA API key (only if AI provider is nvidia)", "https://build.nvidia.com/"),
+    ("POSTIZ_API_KEY", "Postiz API key (posting to TikTok, Reels, YouTube, Facebook)",
+     "https://docs.postiz.com/public-api"),
+    ("POSTIZ_URL", "Postiz address (only for your own Postiz server)", "https://docs.postiz.com/quickstart"),
 ]
 
 SECTIONS = [

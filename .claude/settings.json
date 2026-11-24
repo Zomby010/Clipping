@@ -1,0 +1,15 @@
+{
+  "enabledMcpjsonServers": ["clipping"],
+  "permissions": {
+    "allow": [
+      "mcp__clipping",
+      "mcp__postiz",
+      "Bash(python -m clipping.integrations.postiz:*)",
+      "Bash(python -m clipping.integrations.clipsai_tool:*)",
+      "Bash(python3 -m clipping.integrations.postiz:*)",
+      "Bash(python3 -m clipping.integrations.clipsai_tool:*)",
+      "Bash(python clipping_mcp.py:*)",
+      "Bash(python clip_editor.py:*)"
+    ]
+  }
+}
