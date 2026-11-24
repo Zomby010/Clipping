@@ -10,6 +10,16 @@ When the user asks you to find clips, make or frame edits, export, or post, use 
   then `make_edit` with the moments the user likes. For GTA gameplay, Clipping Studio
   (`python main.py ...`) finds better moments, because ClipsAI only reads the speech.
 - **Framing on the speaker**: `clipsai_follow_speaker` on an edit folder (needs `HF_TOKEN`).
+- **Adding reactions** (the clips in `assets/reactions/<mood>/`): `watch_edit` gives numbered
+  contact sheets of the cut; open each sheet with the Read tool and look at it, together with
+  the speech and script times it returns. Then `list_reactions` and Read its picture to see
+  what each clip shows. Pick the few moments that earn a reaction (a fail, a surprise, a
+  big play, a punchline): usually 1 to 3 in a Short, at least 3 s apart, not in the first or
+  last second, and a corner box rather than a cut-away while the narrator talks. Match the
+  mood to the moment (laugh for a fail, shock for a surprise, hype for a big play, and so on).
+  `add_reactions` puts them in and reports warnings; tell the user what you added and why,
+  in edit times. `remove_reactions` takes them out. The Clip Editor shows the change when its
+  window is clicked again.
 - **Exporting**: `export_edits` (today's edits with `today=true`). Each export joins the
   upload list in `Ready to post/upload_manifest.json`.
 - **Posting**: `postiz_channels`, then `postiz_send`. It is a dry run unless `post=true`.

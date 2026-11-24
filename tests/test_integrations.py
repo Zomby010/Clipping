@@ -374,3 +374,81 @@ def test_project_config_lets_claude_run_the_tools():
     allow = json.load(open(os.path.join(root, ".claude", "settings.json")))["permissions"]["allow"]
     assert "mcp__clipping" in allow and "mcp__postiz" in allow
     assert io.open(os.path.join(root, "CLAUDE.md")).read().startswith("@AGENTS.md")
+
+
+# ================================================================ Claude watches and adds reactions
+def _mp4(path, seconds=3, size="320x568"):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"testsrc=size={size}:rate=30:duration={seconds}",
+                    "-f", "lavfi", "-i", f"sine=duration={seconds}", "-shortest", "-pix_fmt", "yuv420p", str(path)], check=True)
+    return str(path)
+
+
+@pytest.fixture
+def reaction_dir(tmp_path, monkeypatch):
+    from clipping.editor import watch
+    d = tmp_path / "reactions"
+    _mp4(d / "laugh" / "laugh1.mp4", 2)
+    _mp4(d / "laugh" / "laugh2.mp4", 1.5)
+    _mp4(d / "shock" / "omg.mp4", 2)
+    real = watch.reactions
+    monkeypatch.setattr(watch, "reactions", lambda reactions_dir=str(d): real(reactions_dir))
+    monkeypatch.setattr(watch, "REACTION_SHEET", str(tmp_path / "out" / "sheet.jpg"))
+    return d
+
+
+@needs_ffmpeg
+def test_list_reactions_numbers_them_and_makes_a_picture(reaction_dir, tmp_path):
+    from clipping.editor import watch
+    out = claude_tools.list_reactions()
+    assert [(r["n"], r["mood"], r["clip"]) for r in out["reactions"]] == [
+        (1, "laugh", "laugh/laugh1.mp4"), (2, "laugh", "laugh/laugh2.mp4"), (3, "shock", "shock/omg.mp4")]
+    assert out["reactions"][1]["length"] == pytest.approx(1.5, abs=0.1)
+    assert out["picture"] and os.path.getsize(out["picture"]) > 1000
+    assert watch.pick_clip(3, watch.reactions())["clip"] == "shock/omg.mp4"
+    assert watch.pick_clip("laugh", watch.reactions())["n"] == 1
+    assert watch.pick_clip("omg.mp4", watch.reactions())["n"] == 3
+    with pytest.raises(ValueError, match="No reaction clip"):
+        watch.pick_clip("cry", watch.reactions())
+
+
+@needs_ffmpeg
+def test_watch_add_and_remove_reactions(my_folders, reaction_dir, tmp_path):
+    from PIL import Image
+    from clipping.editor import captions as Cap
+    video = _mp4(tmp_path / "game.mp4", 8, "640x360")
+    made = claude_tools.make_edit(video, [{"start": 0, "end": 4}, {"start": 5, "end": 8}], title="Watch me")
+    pr, _ = P.load(made["folder"])
+    pr.captions = Cap.captions_from_words(pr, pr.segments[0], [{"word": "no", "src_start": 1.0, "src_end": 1.3},
+                                                                {"word": "way", "src_start": 1.4, "src_end": 1.8}])
+    P.save(pr, made["folder"])
+
+    seen = claude_tools.watch_edit("latest")
+    assert seen["folder"] == made["folder"] and seen["length"] == 7.0
+    assert seen["every_seconds"] == 0.5 and len(seen["frames"]) in (14, 15)
+    assert seen["frames"][2] == {"n": 3, "time": 1.0}
+    assert [m["start"] for m in seen["moments"]] == [0.0, 4.0]
+    assert seen["speech"][0]["text"].lower().startswith("no way")
+    with Image.open(seen["sheets"][0]) as im:
+        assert im.width > 1000                              # 8 frames across
+    assert seen["reactions_now"] == []
+
+    out = claude_tools.add_reactions(made["folder"], [{"at": 5.0, "clip": 3, "style": "cutaway", "length": 0.9},
+                                                      {"at": 0.2, "clip": "laugh", "style": "corner"},
+                                                      {"at": 6.0, "clip": 2, "style": "corner", "position": "top-right"}])
+    added = {a["at"]: a for a in out["added"]}
+    assert added[5.0]["clip"] == "shock/omg.mp4" and added[5.0]["warnings"] == []
+    assert "very close to the start or the end" in added[0.2]["warnings"]
+    assert any("from another reaction" in w for w in added[6.0]["warnings"])
+    again, _ = P.load(made["folder"])
+    assert len([o for o in again.overlays if o["type"] == "reaction"]) == 3
+    assert {r["style"] for r in claude_tools.watch_edit(made["folder"])["reactions_now"]} == {"cutaway", "corner"}
+    with pytest.raises(ValueError, match="outside the edit"):
+        claude_tools.add_reactions(made["folder"], [{"at": 30, "clip": 1}])
+
+    gone = claude_tools.remove_reactions(made["folder"], [out["added"][0]["id"]])
+    assert len(gone["removed"]) == 1 and len(gone["reactions_now"]) == 2
+    assert claude_tools.remove_reactions(made["folder"])["reactions_now"] == []
+
+    exported = claude_tools.export_edits([made["folder"]])   # the reactions render
+    assert exported["summary"].startswith("Exported 1 of 1.")

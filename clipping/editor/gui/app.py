@@ -468,6 +468,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
 
     def _bind_keys(self):
         r = self.root
+        r.bind("<FocusIn>", self._reload_if_changed, add="+")   # picks up changes Claude made to this edit
         r.bind_all("<Control-z>", lambda e: self.undo())
         r.bind_all("<Control-y>", lambda e: self.redo())
         r.bind_all("<Control-Z>", lambda e: self.redo())
@@ -516,10 +517,29 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         try:
             self.project.folder = self.ensure_folder()   # phase 3: voice_clips() finds the voice files from here
             P.save(self.project, self.project.folder)
+            self._saved_mtime = self._file_mtime()
             if note:
                 self.status(note)
         except OSError as e:
             self.status(f"Could not save: {e}")
+
+    def _file_mtime(self) -> float:
+        try:
+            return os.path.getmtime(os.path.join(self.folder, P.PROJECT_FILE)) if self.folder else 0.0
+        except OSError:
+            return 0.0
+
+    def _reload_if_changed(self, _event=None):
+        """Claude (or another window) changed this edit's file: show that version."""
+        if self.busy or not self.folder or getattr(self, "_saved_mtime", None) is None:
+            return
+        if self._file_mtime() > self._saved_mtime + 0.5:
+            keep = self.history
+            self.open_project(self.folder, quiet=True)
+            keep.record(self.project)          # Undo goes back to before the change
+            self.history = keep
+            self.status("This edit was changed outside the window (by Claude?). Showing the new version; "
+                        "Undo takes it back.")
 
     def commit(self, note: str | None = None, keep_selection: str | None = None):
         """Call after every change: undo point, autosave, redraw."""
@@ -1206,6 +1226,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         self.player.pause()
         self.project, self.folder = project, folder
         self.history = P.History(project)
+        self._saved_mtime = self._file_mtime()
         self.settings["last_project"] = folder
         save_settings(self.settings)
         self.preview_path = None

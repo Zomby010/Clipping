@@ -158,3 +158,71 @@ def postiz_send(channels: list[str] | None = None, start: str = "", every_hours:
     for r in report[1:]:   # keep the answer short: one example of what is posted is enough
         r.pop("body", None)
     return {"summary": postiz.describe(report, dry_run=not post), "report": report}
+
+
+# ================================================================ reactions (Claude watches, then picks)
+def _edit_folder(edit_folder: str) -> str:
+    if edit_folder in ("", "latest", None):
+        edits = list_edits()
+        if not edits:
+            raise ValueError("There are no edits yet.")
+        return edits[0]["folder"]
+    return os.path.abspath(os.path.expanduser(edit_folder))
+
+
+def watch_edit(edit_folder: str = "latest", every_seconds: float = 0) -> dict:
+    """Watch an edit: numbered contact sheets of the cut (open them with the Read
+    tool to see the pictures), plus speech, script, moments and the reactions
+    already there, all in edit seconds. edit_folder "latest" = the newest edit."""
+    from clipping.editor import batch, watch
+    from clipping.editor import project as P
+    folder = _edit_folder(edit_folder)
+    pr, _ = P.load(folder)
+    pr.folder = folder            # phase 3: voices are found next to the edit
+    batch.work_out_auto_crop(pr)  # the preview needs the automatic crop
+    P.save(pr, folder)
+    seen = watch.watch(pr, folder, every_seconds)
+    seen["folder"] = folder
+    seen["title"] = pr.title
+    return seen
+
+
+def list_reactions(with_pictures: bool = True) -> dict:
+    """Every reaction clip in assets/reactions/<mood>/, numbered, and one picture
+    of them all (open it with the Read tool to see what each clip shows)."""
+    from clipping.editor import watch
+    items = watch.reactions()
+    return {"reactions": [{k: it[k] for k in ("n", "mood", "clip", "length")} for it in items],
+            "picture": watch.reaction_sheet(items) if with_pictures and items else None,
+            "folder": watch.O.REACTIONS_DIR,
+            "styles": {"cutaway": "fills the screen for 0.8-2 s while the video keeps playing underneath",
+                       "corner": "a rounded box in a corner (top-left, top-right or middle-left)"}}
+
+
+def add_reactions(edit_folder: str, reactions: list[dict]) -> dict:
+    """Put reactions into an edit. Each item: {"at": edit seconds, "clip": number
+    from list_reactions (or file name, or a mood), "style": "cutaway" or "corner",
+    "length": 0.8-2 s, "position": "top-left" | "top-right" | "middle-left"}.
+    Returns the added reactions with their ids and any warnings."""
+    from clipping.editor import project as P
+    from clipping.editor import watch
+    folder = _edit_folder(edit_folder)
+    pr, _ = P.load(folder)
+    added = watch.add_reactions(pr, reactions)
+    P.save(pr, folder)
+    return {"folder": folder, "added": added, "reactions_now": watch.current_reactions(pr),
+            "note": "Reopen the edit in the Clip Editor (Open…) to see them, or export_edits to render."}
+
+
+def remove_reactions(edit_folder: str, ids: list[str] | None = None) -> dict:
+    """Take reactions out of an edit: the given ids, or all of them."""
+    from clipping.editor import overlays as O
+    from clipping.editor import project as P
+    from clipping.editor import watch
+    folder = _edit_folder(edit_folder)
+    pr, _ = P.load(folder)
+    gone = [o["id"] for o in O.anchored(pr, "reaction") if ids is None or o["id"] in ids]
+    for item_id in gone:
+        O.delete(pr, item_id)
+    P.save(pr, folder)
+    return {"folder": folder, "removed": gone, "reactions_now": watch.current_reactions(pr)}

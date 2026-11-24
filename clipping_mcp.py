@@ -26,6 +26,10 @@ TOOLS = [
     T.clipsai_find_clips,
     T.make_edit,
     T.clipsai_follow_speaker,
+    T.watch_edit,
+    T.list_reactions,
+    T.add_reactions,
+    T.remove_reactions,
     T.export_edits,
     T.postiz_channels,
     T.postiz_send,
@@ -34,7 +38,9 @@ TOOLS = [
 INSTRUCTIONS = (
     "Tools for the Clipping project: Clipping Studio's clips (My Clips), the Clip Editor's edits (My Edits), "
     "exports to Ready to post and the upload list, ClipsAI (find talk clips, follow the speaker) and Postiz "
-    "(post to TikTok, Instagram Reels, YouTube and Facebook). Call status first. postiz_send is a dry run "
+    "(post to TikTok, Instagram Reels, YouTube and Facebook). Call status first. To add reactions: watch_edit, "
+    "look at its sheets with the Read tool, list_reactions and look at its picture, then add_reactions at "
+    "the moments that earn them. postiz_send is a dry run "
     "unless post=true: show the dry run to the user before posting. Times are Africa/Nairobi."
 )
 
