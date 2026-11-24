@@ -36,6 +36,7 @@ from clipping.editor import captions as C
 from clipping.editor import overlays as O
 from clipping.editor import framing, media, preview, render, timeline
 from clipping.editor import project as P
+from clipping.editor.gui.review_panels import ReviewPanelsMixin
 from clipping.editor.gui.sound_panels import SoundPanelsMixin
 from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
 
@@ -88,7 +89,7 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp(TextPanelsMixin, SoundPanelsMixin):
+class EditorApp(TextPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin):
     APP_NAME = APP_NAME
 
     def __init__(self, root: tk.Tk):
@@ -368,11 +369,13 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin):
         self.react_tab = ScrollPage(self.pages, bg=COLORS["card"])      # phase 4
         self.page_frames["Music and SFX"] = self.sound_tab
         self.page_frames["Reactions"] = self.react_tab
+        self.check_tab = ScrollPage(self.pages, bg=COLORS["card"])      # phase 5
+        self.page_frames["Check"] = self.check_tab
         self.page_frames["Framing"] = self.framing_tab
         self.page_frames["Captions"] = self.captions_tab
         self.page_frames["Hook and text"] = self.text_tab
         self.page_frames["Export"] = self.export_tab
-        order = ("Story", "Captions", "Hook and text", "Voice", "Reactions", "Music and SFX", "Framing", "Export")
+        order = ("Story", "Captions", "Hook and text", "Voice", "Reactions", "Music and SFX", "Framing", "Check", "Export")
         for name in order:
             ttk.Radiobutton(rail, text=name, value=name, variable=self.page_var, style="Rail.Toolbutton",
                             command=lambda n=name: self.show_page(n)).pack(fill="x", pady=1)
@@ -382,6 +385,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin):
         self._build_export_tab(self.export_tab.inner)
         self._build_sound_page(self.sound_tab.inner)
         self._build_reactions_page(self.react_tab.inner)
+        self._build_check_page(self.check_tab.inner)
         self.show_page("Framing")
 
     def show_page(self, name: str):
@@ -540,6 +544,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin):
             self._refresh_upload()
             self._refresh_sound_page()
             self._refresh_reactions_page()
+            self._refresh_check_page()
             self.draw_timeline()
         finally:
             self._loading = False
@@ -993,6 +998,8 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin):
         if self.busy:
             messagebox.showinfo(APP_NAME, "Wait for the current job to finish, or press Stop.")
             return
+        if not self.confirm_checks_before_export():
+            return
         self.player.pause()
         snapshot = P.Project.from_dict(self.project.to_dict())
         ready = self.ready_root
@@ -1113,6 +1120,7 @@ class EditorApp(TextPanelsMixin, SoundPanelsMixin):
         self.player.pause()
         self.project = P.Project(title=title.strip() or "Untitled edit", channel=self.project.channel)
         self.apply_channel_logo()
+        self.apply_template_to_new_edit()
         self.folder = None
         self.history = P.History(self.project)
         self.current_source_id = None

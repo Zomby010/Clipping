@@ -42,7 +42,8 @@ def upload_text(project) -> str:
     tags = [t.lstrip("#") for t in hashtags.split() if t.lstrip("#")]
     item = {
         "youtube_title_final": title,
-        "youtube_description_final": up["description"].strip(),
+        "youtube_description_final": "\n\n".join(
+            t for t in (up["description"].strip(), up.get("description_footer", "").strip()) if t),
         "hastag": hashtags,
         "youtube_tags_final": tags,
         "tiktok_caption_final": f"{title} {hashtags}".strip(),

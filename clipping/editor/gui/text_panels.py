@@ -380,7 +380,9 @@ class TextPanelsMixin:
             secs = 1.5
         pos = dict(GRID_NAMES).get(self.pop_pos.get(), "1,1")
         end = min(self.project.total_length, t + secs)
-        self.project.overlays.append({"type": "text", "start": round(t, 2), "end": round(end, 2),
+        import uuid
+        self.project.overlays.append({"id": f"pop_{uuid.uuid4().hex[:8]}", "type": "text",
+                                      "start": round(t, 2), "end": round(end, 2),
                                       "text": text, "position": pos})
         self.pop_var.set("")
         self.commit(f"Pop-up added at {timeline.format_time(t, True)}.")
@@ -448,8 +450,10 @@ class TextPanelsMixin:
         new = {"title": self.up_title.get().strip()[:publish.TITLE_LIMIT],
                "description": self.up_desc.get("1.0", "end").strip(),
                "hashtags": " ".join(self.up_tags.get().split())}
-        if new != publish.upload_fields(self.project) or not self.project.upload:
-            self.project.upload = new
+        current = publish.upload_fields(self.project)
+        if any(new[k] != current.get(k) for k in new) or not self.project.upload:
+            # keep the other keys (description footer, other platforms' text)
+            self.project.upload = {**(self.project.upload or {}), **new}
             self.commit()
 
     def pick_cover(self):
