@@ -207,6 +207,23 @@ class TextPanelsMixin:
         if self.busy:
             messagebox.showinfo(self.APP_NAME, "Wait for the current job to finish, or press Stop.")
             return
+        # --- phase 3: in Explain and New story the words on screen are the script ---
+        if self.project.mode in ("explain", "new_story") and self.project.script_lines:
+            pick = messagebox.askyesnocancel(
+                self.APP_NAME,
+                "Captions from: the script?\n\nYes = the script (what the narrator says, with the word highlight)\n"
+                "No = what people say in the video\nCancel = do nothing")
+            if pick is None:
+                return
+            if pick:
+                self.project.voices = dict(self.project.voices or {}, captions_from="script")
+                made = C.use_script_captions(self.project, styles.caption_style(
+                    self.project.channel, self.project.caption_style).max_words)
+                self.commit(f"Made {made} caption lines from the script. They follow the voice.")
+                self.show_page("Captions")
+                return
+            self.project.voices = dict(self.project.voices or {}, captions_from="speech")
+        # --- end phase 3 ---
         if self.project.captions and not messagebox.askyesno(
                 self.APP_NAME, "Make new captions? This replaces the captions you have now (Undo brings them back)."):
             return

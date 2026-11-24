@@ -30,6 +30,7 @@ import subprocess
 import tempfile
 import uuid
 
+from clipping.editor import script as script_lines
 from clipping.editor import timeline
 
 PAUSE_BREAK = 0.6       # a gap this long between words starts a new line
@@ -118,7 +119,21 @@ def _segment_for(project, cap: dict):
 
 def refresh(project) -> None:
     """Recompute every caption's edit times from the current cut list."""
+    script_lines.refresh(project)  # phase 3: script captions follow their line
+    by_line = {l["id"]: l for l in project.script_lines}
     for cap in project.captions:
+        if cap.get("line_id"):           # --- phase 3: a caption made from the script ---
+            ln = by_line.get(cap["line_id"])
+            if ln is None or not ln.get("visible", True):
+                cap["visible"] = False
+                continue
+            cap["segment_id"], cap["source_id"] = ln["segment_id"], ln["source_id"]
+            for w in cap["words"]:       # src_* are seconds into the voice line here
+                w["start"] = round(ln["start"] + w["src_start"], 3)
+                w["end"] = round(ln["start"] + w["src_end"], 3)
+            cap["visible"] = True
+            cap["start"], cap["end"] = cap["words"][0]["start"], cap["words"][-1]["end"]
+            continue
         found = _segment_for(project, cap)
         if found is None:
             cap["visible"] = False
@@ -227,7 +242,7 @@ def delete(project, cap_id: str) -> None:
 def nudge(project, cap_id: str, edge: str, delta: float) -> None:
     """Move a line's start or end by ``delta`` seconds of the finished video."""
     cap = find(project, cap_id)
-    found = _segment_for(project, cap)
+    found = None if cap.get("line_id") else _segment_for(project, cap)  # script captions run in voice time
     speed = found[1].speed if found else 1.0
     d = delta * (speed or 1.0)
     words = cap["words"]
@@ -325,3 +340,56 @@ def transcribe_segments(project, transcriber, cache_dir: str, max_words: int = 4
         if progress:
             progress(n / len(segs))
     return out
+
+
+# ---------------------------------------------------------------- from the script (phase 3)
+def line_signature(line: dict) -> str:
+    """Changes whenever the words or their timings change, so only those captions are remade."""
+    return hashlib.sha1(json.dumps([line.get("text"), line.get("words"), line.get("duration")],
+                                   sort_keys=True).encode()).hexdigest()[:10]
+
+
+def captions_from_line(line: dict, max_words: int = 4) -> list[dict]:
+    """Caption lines for one script line, timed by the voice's word timings
+    (evenly spread when the voice has none, e.g. a mic recording).
+    Words are in seconds from the start of the voice (kept in src_start/src_end)."""
+    timings = line.get("words") or []
+    if len(timings) != len((line.get("text") or "").split()):
+        from clipping.editor import voice
+        timings = voice.even_words(line.get("text", ""), script_lines.line_duration(line))
+    words = [{"word": w["word"], "src_start": float(w["start"]), "src_end": float(w["end"])} for w in timings]
+    out = []
+    for group in group_words(words, max_words):
+        cap = make_caption(group, line["segment_id"])
+        cap["source_id"], cap["line_id"], cap["line_sig"] = line.get("source_id"), line["id"], line_signature(line)
+        out.append(cap)
+    return out
+
+
+def sync_script_captions(project, max_words: int = 4) -> None:
+    """Make the captions match the script: remake the captions of lines that
+    changed, drop the captions of lines that are gone, leave the rest alone.
+    Captions from speech (phase 2) are not touched."""
+    script_lines.refresh(project)
+    lines = {l["id"]: l for l in project.script_lines}
+    keep, have = [], set()
+    for cap in project.captions:
+        if not cap.get("line_id"):
+            keep.append(cap)
+            continue
+        ln = lines.get(cap["line_id"])
+        if ln is not None and cap.get("line_sig") == line_signature(ln):
+            keep.append(cap)
+            have.add(ln["id"])
+    for ln in script_lines.visible(project):
+        if ln["id"] not in have and ln.get("text"):
+            keep.extend(captions_from_line(ln, max_words))
+    project.captions = keep
+    refresh(project)
+
+
+def use_script_captions(project, max_words: int = 4) -> int:
+    """Replace every caption with captions from the script. Returns how many."""
+    project.captions = []
+    sync_script_captions(project, max_words)
+    return len(project.captions)

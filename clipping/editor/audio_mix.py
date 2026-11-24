@@ -209,13 +209,15 @@ def _fit(total: float) -> str:
     return f"apad,atrim=0:{_num(total)},asetpts=PTS-STARTPTS"
 
 
-def needs_mixer(project, reactions=()) -> bool:
-    return bool(music(project) or O.visible_sfx(project) or reactions or voice_clips(project)
+def needs_mixer(project, reactions=(), voices=None) -> bool:
+    voices = voice_clips(project) if voices is None else voices
+    return bool(music(project) or O.visible_sfx(project) or reactions or voices
                 or loudness_target(project) is not None)
 
 
 def build(project, total: float, next_input: int, reactions: list[tuple[int, "O.ReactionClip"]] = (),
-          main: str = "acat", out: str = "aout", has_original: bool = True) -> tuple[list[str], list[str]]:
+          main: str = "acat", out: str = "aout", has_original: bool = True,
+          voices: list[dict] | None = None) -> tuple[list[str], list[str]]:
     """(extra ffmpeg input args, filter parts) turning ``[main]`` into ``[out]``.
     ``reactions`` are (input index, clip) pairs whose inputs render.py already added."""
     args: list[str] = []
@@ -232,7 +234,7 @@ def build(project, total: float, next_input: int, reactions: list[tuple[int, "O.
         parts.append(f"[{main}]anull[a_main]")
     streams.append("a_main")
 
-    voices = voice_clips(project)
+    voices = voice_clips(project) if voices is None else voices
     for n, v in enumerate(voices):
         args += ["-i", v["path"]]
         parts.append(f"[{k}:a]{FMT},volume={_num(float(v.get('gain', 1.0)))},"

@@ -84,6 +84,11 @@ class Segment:
     framing: Framing = field(default_factory=Framing)
     note: str = ""
     id: str = field(default_factory=lambda: _new_id("seg"))
+    # --- phase 3: voice ---
+    # How loud the moment's own sound is, 0 (muted) to 1. None = follow the mode
+    # (Explain 1, React 1, New story 0).
+    original_level: float | None = None
+    # --- end phase 3 ---
 
     @property
     def length(self) -> float:
@@ -106,6 +111,11 @@ class Project:
     overlays: list[dict] = field(default_factory=list)  # {"type": "text", start, end, text, position}
     cover: dict = field(default_factory=dict)           # {"time": edit seconds, "title": ...}
     upload: dict = field(default_factory=dict)          # {"title", "description", "hashtags"}
+    # --- phase 3: story and voice ---
+    scene_log: list[dict] = field(default_factory=list)  # [{source_id, start, end, what_happens, who, mood, viral_score, why}]
+    voices: dict = field(default_factory=dict)           # {"default": voice, "speed": 0, "pitch": 0, "characters": [{name, about, voice}]}
+    stars: list[dict] = field(default_factory=list)      # starred moments (score >= 7), a view of scene_log
+    # --- end phase 3 ---
     # Later phases. Kept in the file from day one.
     script_lines: list[dict] = field(default_factory=list)
     # Phase 4: {"music": {...}, "sfx": [...], "loudness": -14} (see audio_mix.py,

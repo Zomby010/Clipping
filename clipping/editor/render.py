@@ -100,26 +100,78 @@ def video_filter(seg: Segment, src: Source, q: Quality, label_in: str, label_out
     return f"{head},crop={cw}:{ch}:{x}:{y},scale={W}:{H}:flags=bicubic,{tail}"
 
 
-def audio_filter(seg: Segment, src: Source, index: int, label_out: str) -> str:
+def audio_filter(seg: Segment, src: Source, index: int, label_out: str,
+                 level: float = 1.0, remove_talking: str = "") -> str:
     length = seg.length
     tempo = atempo_chain(seg.speed)
     if src.has_audio:
         chain = [f"[{index}:a]aresample=48000", "aformat=sample_fmts=fltp:channel_layouts=stereo",
                  "asetpts=PTS-STARTPTS", *tempo]
+        # --- phase 3: voice --- the moment's own sound: quieter, muted, or without the talking
+        if remove_talking and level > 0:
+            chain.append(remove_talking)
+        if abs(level - 1.0) > 1e-6:
+            chain.append(f"volume={_num(max(0.0, level))}")
+        # --- end phase 3 ---
     else:
         chain = ["anullsrc=r=48000:cl=stereo"]
     chain += ["apad", f"atrim=0:{_num(length)}", "asetpts=PTS-STARTPTS"]
     return ",".join(chain) + label_out
 
 
+# --- phase 3: voice ---
+MODE_ORIGINAL_LEVEL = {"explain": 1.0, "react": 1.0, "new_story": 0.0}
+EXPLAIN_DIP = 0.25        # the original drops to this under a voice line in Explain mode
+DIP_FADE = 0.15           # seconds to fade down and up
+# "Keep game sounds, remove talking" (project.voices["remove_talking"] = "centre" or "band"):
+REMOVE_TALKING = {
+    # Removes what is the same in the left and right channel (speech is usually in the
+    # middle of the picture), keeps what differs (game sounds, music, effects).
+    # Tested on a real clip: speech recognition heard 72 words before and 1 after. It takes about
+    # 10 dB off the level, so it is lifted back by 3x. A mono source has nothing to tell the
+    # middle from the sides, so it goes quiet.
+    "centre": "pan=stereo|c0=c0-c1|c1=c1-c0,volume=3.0",
+    # Tested and not used: cutting the 300-3400 Hz band left 80 of 72 words audible to speech recognition.
+    "band": "bandreject=f=1850:width_type=h:w=3100",
+}
+
+
+def original_level(project, seg: Segment) -> float:
+    """How loud a moment's own sound is: its slider, else what the mode says."""
+    if seg.original_level is not None:
+        return min(1.0, max(0.0, float(seg.original_level)))
+    return MODE_ORIGINAL_LEVEL.get(project.mode, 1.0)
+
+
+def _dip_expression(voices: list[dict], depth: float = EXPLAIN_DIP, fade: float = DIP_FADE) -> str:
+    """A volume expression (per frame) that dips to ``depth`` under every voice line,
+    fading down and up over ``fade`` seconds."""
+    terms = []
+    for v in voices:
+        a, b = v["start"], v["end"]
+        terms.append(f"min(1,max(0,(t-({_num(a - fade)}))/{_num(fade)}))*"
+                     f"min(1,max(0,(({_num(b + fade)})-t)/{_num(fade)}))")
+    if not terms:
+        return "1"
+    inner = terms[-1]
+    for term in reversed(terms[:-1]):   # ffmpeg's max() takes exactly two arguments, so nest them
+        inner = f"max({term},{inner})"
+    return f"1-{_num(1 - depth)}*{inner}"
+
+
+# --- end phase 3 ---
+
+
 def build_command(project: Project, out_path: str, q: Quality = EXPORT,
                   layers: "text_layers.TextLayers | None" = None,
-                  visuals: "overlays.VisualLayers | None" = None) -> list[str]:
+                  visuals: "overlays.VisualLayers | None" = None,
+                  voices: "list[dict] | None" = None) -> list[str]:
     """The full ffmpeg command for this edit (no progress flags).
     ``layers`` adds captions / hook / pop-ups (.ass) and emoji pictures;
     ``visuals`` adds reaction clips, arrows, circles and the logo (phase 4).
-    Music, sound effects, voices and loudness come from the project.
-    Everything is drawn and mixed in this one pass."""
+    ``voices`` is ``voice.voice_clips(project)``, the voice-over lines (phase 3;
+    looked up when not given). Music, sound effects and loudness come from the
+    project. Everything is drawn and mixed in this one pass."""
     if not project.segments:
         raise RenderError("The cut list is empty. Add at least one moment.")
     problems = project.problems()
@@ -130,10 +182,14 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
     for i, seg in enumerate(project.segments):
         src = project.source(seg.source_id)
         cmd += ["-ss", _num(seg.source_in), "-t", _num(seg.source_out - seg.source_in), "-i", src.path]
+    # --- phase 3: voice ---
+    talk_cut = REMOVE_TALKING.get((project.voices or {}).get("remove_talking") or "", "")
+    # --- end phase 3 ---
     for i, seg in enumerate(project.segments):
         src = project.source(seg.source_id)
         parts.append(video_filter(seg, src, q, f"[{i}:v]", f"[v{i}]"))
-        parts.append(audio_filter(seg, src, i, f"[a{i}]"))
+        parts.append(audio_filter(seg, src, i, f"[a{i}]",
+                                  level=original_level(project, seg), remove_talking=talk_cut))
     n = len(project.segments)
     k = n  # next input number
     joined = "".join(f"[v{i}][a{i}]" for i in range(n))
@@ -192,15 +248,21 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
                      f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[ve{e}]")
         last, k = f"ve{e}", k + 1
     parts.append(f"[{last}]null[vout]")
-    # --- phase 4: sound (original, voices, music, sound effects, loudness) ---
-    if audio_mix.needs_mixer(project, reaction_inputs):
+    # --- phase 3 + 4: sound (original, voices, music, sound effects, loudness) ---
+    if voices is None:
+        voices = audio_mix.voice_clips(project)
+    main = "acat"
+    if voices and project.mode == "explain":   # the original dips under the narrator
+        parts.append(f"[acat]volume='{_dip_expression(voices)}':eval=frame[adip]")
+        main = "adip"
+    if audio_mix.needs_mixer(project, reaction_inputs, voices):
         has_original = any(s.has_audio for s in project.sources)
         extra, audio_parts = audio_mix.build(project, project.total_length, k, reaction_inputs,
-                                             main="acat", out="aout", has_original=has_original)
+                                             main=main, out="aout", has_original=has_original, voices=voices)
         cmd += extra
         parts += audio_parts
     else:
-        parts.append("[acat]anull[aout]")
+        parts.append(f"[{main}]anull[aout]")
     cmd += [
         "-filter_complex", ";".join(parts),
         "-map", "[vout]", "-map", "[aout]",
@@ -309,8 +371,19 @@ def run(cmd: list[str], total_seconds: float, on_progress=None, cancel: threadin
         on_progress(1.0)
 
 
-def edit_fingerprint(project: Project, q: Quality) -> str:
+def _voices(project: Project, folder: str | None = None) -> list[dict]:
+    """The voice-over lines to mix in (phase 3)."""
+    from clipping.editor import voice
+    return voice.voice_clips(project, folder)
+
+
+def edit_fingerprint(project: Project, q: Quality, voices: "list[dict] | None" = None) -> str:
     data = {
+        # --- phase 3: voice --- which voice files, where, how loud, and the mode (it sets the dip)
+        "voices": [[v["path"], v["start"], v["end"], v["gain"],
+                    os.path.getmtime(v["path"]) if os.path.exists(v["path"]) else 0] for v in voices or []],
+        "mode": project.mode, "talk_cut": (project.voices or {}).get("remove_talking") or "",
+        # --- end phase 3 ---
         "q": [q.width, q.height, q.preset, q.crf],
         "segments": [dict(s.__dict__, framing=s.framing.__dict__) for s in project.segments],
         "text": text_layers.fingerprint_data(project),
@@ -327,7 +400,8 @@ def make_preview(project: Project, project_dir: str, on_progress=None, cancel=No
     """A small, fast copy of the whole edit for watching. Cached."""
     folder = os.path.join(project_dir, "Preview")
     os.makedirs(folder, exist_ok=True)
-    out = os.path.join(folder, f"preview-{edit_fingerprint(project, PREVIEW)}.mp4")
+    voices = _voices(project, project_dir)   # phase 3
+    out = os.path.join(folder, f"preview-{edit_fingerprint(project, PREVIEW, voices)}.mp4")
     if os.path.exists(out) and os.path.getsize(out) > 0:
         if on_progress:
             on_progress(1.0)
@@ -342,7 +416,8 @@ def make_preview(project: Project, project_dir: str, on_progress=None, cancel=No
     with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
         layers = text_layers_for(project, PREVIEW, work, fonts, log)
         visuals = visual_layers_for(project, PREVIEW, work, log)
-        run(build_command(project, tmp, PREVIEW, layers, visuals), project.total_length, on_progress, cancel, log)
+        run(build_command(project, tmp, PREVIEW, layers, visuals, voices), project.total_length,
+            on_progress, cancel, log)
     os.replace(tmp, out)
     return out
 
@@ -367,7 +442,8 @@ def export(project: Project, ready_root: str, on_progress=None, cancel=None, log
         with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
             layers = text_layers_for(project, EXPORT, work, fonts, log)
             visuals = visual_layers_for(project, EXPORT, work, log)
-            run(build_command(project, tmp, EXPORT, layers, visuals), project.total_length, on_progress, cancel, log)
+            run(build_command(project, tmp, EXPORT, layers, visuals, _voices(project)),
+                project.total_length, on_progress, cancel, log)
         os.replace(tmp, out)
     except BaseException:
         if not os.listdir(folder):

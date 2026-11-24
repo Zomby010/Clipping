@@ -489,7 +489,9 @@ class SoundPanelsMixin:
     def use_script_cues(self):
         """Add reactions / sound effects where Claude's script lines ask for them
         (cues like 'react:laugh' or 'sfx:whoosh', from phase 3)."""
-        lines = [ln for ln in (self.project.script_lines or []) if ln.get("cue")]
+        from clipping.editor import script as S
+        S.refresh(self.project)   # line times follow the cut
+        lines = [ln for ln in S.visible(self.project) if ln.get("cue")]
         if not lines:
             messagebox.showinfo(self.APP_NAME, "No cues yet. Claude adds cues like 'react:laugh' or "
                                                "'sfx:whoosh' when it writes the script (Story tab).")
