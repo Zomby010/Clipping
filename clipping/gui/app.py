@@ -155,28 +155,51 @@ class StudioApp:
             else:
                 self.vars[f.dest] = tk.StringVar(value="" if value is None else str(value))
 
-    # ---- story angles: several boxes that feed the one "story_angles" setting
+    # ---- story angles: a small window with one box per angle, feeding the "story_angles" setting
     ANGLE_BOXES_START = 2
 
-    def _build_angle_boxes(self, parent, row: int):
-        self._angle_rows: list[tuple[ttk.Frame, tk.StringVar]] = []
-        self._angles_syncing = False
-        self.angle_frame = ttk.Frame(parent, style="Card.TFrame")
-        self.angle_frame.grid(row=row, column=0, columnspan=4, sticky="ew", padx=6, pady=(6, 0))
-        ttk.Label(self.angle_frame,
-                  text="Story angles (optional). Each video follows its own angle, spread over the "
-                       "clips in order. Add as many as you like.",
-                  style="Card.TLabel").pack(anchor="w")
-        self.angle_list = ttk.Frame(self.angle_frame, style="Card.TFrame")
+    def _refresh_angles_button(self):
+        n = len(S_angles(self.vars["story_angles"].get()))
+        self.angles_btn.configure(text=f"Story angles ({n})…" if n else "Story angles…")
+
+    def _open_angles_dialog(self):
+        if self._angles_dialog is not None and self._angles_dialog.winfo_exists():
+            self._angles_dialog.lift()
+            return
+        win = tk.Toplevel(self.root)
+        self._angles_dialog = win
+        win.title("Story angles")
+        win.transient(self.root)
+        win.configure(background=COLORS["bg"])
+        win.minsize(560, 200)
+        box = ttk.Frame(win, style="Card.TFrame", padding=12)
+        box.pack(fill="both", expand=True)
+        ttk.Label(box, text="Each video follows its own angle, spread over the clips in order. "
+                            "Add as many angles as you like (up to %d). Empty boxes are ignored." % MAX_STORY_ANGLES,
+                  style="Help.TLabel", wraplength=520, justify="left").pack(anchor="w", pady=(0, 6))
+        self.angle_list = ttk.Frame(box, style="Card.TFrame")
         self.angle_list.pack(fill="x")
-        self.add_angle_btn = ttk.Button(self.angle_frame, text="+ Add angle", command=self._add_angle_box)
-        self.add_angle_btn.pack(anchor="w", pady=(3, 0))
-        self.vars["story_angles"].trace_add("write", lambda *a: self._angles_var_changed())
+        foot = ttk.Frame(box, style="Card.TFrame")
+        foot.pack(fill="x", pady=(8, 0))
+        self.add_angle_btn = ttk.Button(foot, text="+ Add angle", command=self._add_angle_box)
+        self.add_angle_btn.pack(side="left")
+        ttk.Button(foot, text="Done", style="Accent.TButton", command=self._close_angles_dialog).pack(side="right")
+        win.protocol("WM_DELETE_WINDOW", self._close_angles_dialog)
         self._rebuild_angle_boxes(S_angles(self.vars["story_angles"].get()))
 
+    def _close_angles_dialog(self):
+        if self._angles_dialog is not None:
+            self._angles_dialog.destroy()
+        self._angles_dialog = None
+        self._angle_rows = []
+
+    def _angles_dialog_open(self) -> bool:
+        return self._angles_dialog is not None and self._angles_dialog.winfo_exists()
+
     def _angles_var_changed(self):
-        """The setting changed from outside (profile loaded, reset): show it in the boxes."""
-        if self._angles_syncing:
+        """The setting changed (box edited, profile loaded, reset): keep button and boxes in step."""
+        self._refresh_angles_button()
+        if self._angles_syncing or not self._angles_dialog_open():
             return
         if S_angles(self.vars["story_angles"].get()) != self._angle_values():
             self._rebuild_angle_boxes(S_angles(self.vars["story_angles"].get()))
@@ -332,12 +355,19 @@ class StudioApp:
         brief_box.grid(row=2, column=1, columnspan=3, sticky="ew", padx=6, pady=5)
         ttk.Label(brief_box, text="Story direction (optional: who and what, the overall tone)",
                   style="Card.TLabel").pack(anchor="w")
-        ttk.Entry(brief_box, textvariable=self.vars["story_brief"]).pack(fill="x", pady=(2, 0))
-
-        self._build_angle_boxes(quick, row=3)
+        line = ttk.Frame(brief_box, style="Card.TFrame")
+        line.pack(fill="x", pady=(2, 0))
+        self.angles_btn = ttk.Button(line, command=self._open_angles_dialog)
+        self.angles_btn.pack(side="right", padx=(6, 0))
+        ttk.Entry(line, textvariable=self.vars["story_brief"]).pack(side="left", fill="x", expand=True)
+        self._angles_dialog = None
+        self._angle_rows: list[tuple[ttk.Frame, tk.StringVar]] = []
+        self._angles_syncing = False
+        self.vars["story_angles"].trace_add("write", lambda *a: self._angles_var_changed())
+        self._refresh_angles_button()
 
         checks = ttk.Frame(quick, style="Card.TFrame")
-        checks.grid(row=4, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
+        checks.grid(row=3, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
         for i, dest in enumerate(("voiceover", "no_reactions", "no_bgm", "no_subs",
                                   "no_broll", "no_hook", "watermark", "cleanup_source")):
             ttk.Checkbutton(checks, text=self.by_dest[dest].label, variable=self.vars[dest],
@@ -704,17 +734,26 @@ class StudioApp:
         self.root.after(120, self._drain_log)
 
     # ------------------------------------------------------------------ helpers
+    def _log_at_bottom(self) -> bool:
+        """True when the log is showing its last line (so new output should be followed).
+        If you scrolled up to read something, new output no longer pulls you back down."""
+        self.log.update_idletasks()      # Tk lays text out lazily; measure after it has caught up
+        return self.log.yview()[1] >= 0.999
+
     def _log(self, text: str):
+        follow = self._log_at_bottom()
         self.log.configure(state="normal")
         self.log.insert("end", text)
         lines = int(self.log.index("end-1c").split(".")[0])
         if lines > MAX_LOG_LINES:
             self.log.delete("1.0", f"{lines - MAX_LOG_LINES}.0")
-        self.log.see("end")
+        if follow:
+            self.log.see("end")
         self.log.configure(state="disabled")
 
     def _log_progress(self, text: str):
         """Show a redrawing progress bar on one line that updates in place."""
+        follow = self._log_at_bottom()
         self.log.configure(state="normal")
         if self._progress_open:
             self.log.delete("end-1c linestart", "end-1c")
@@ -722,7 +761,8 @@ class StudioApp:
             self.log.insert("end", "\n")
         self.log.insert("end", text.strip())
         self._progress_open = True
-        self.log.see("end")
+        if follow:
+            self.log.see("end")
         self.log.configure(state="disabled")
         self.status_var.set(text.strip()[:110])
 
