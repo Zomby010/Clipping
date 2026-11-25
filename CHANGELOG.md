@@ -10,6 +10,10 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 
 ## [Unreleased]
 
+### Added
+- Clipping Studio **Story angles**: more than one story direction. Add as many angle boxes as you like (up to 8, **+ Add angle**) next to the Story direction box; the new `--story-angles` option takes the same list for the command line. Each Short is told through its own angle, spread over the Shorts in order (a Short can get more than one when there are more angles than Shorts, so no angle is dropped). Series mode stays one continuing story with each part leaning into its angle. The angle for each part is saved in `Storyline.txt`. The Story direction box still works as the overall direction.
+- Clip Editor **Voice** tab and Clipping Studio **Voice** setting: the voice pickers now list the most popular free voices on Shorts first (Guy, Aria, Jenny, Brian, Andrew, Christopher, Ava, Ryan, Sonia and more, including the "Multilingual" variants), so you can pick a voice you already know. All are free edge-tts voices. The Kenyan, Nigerian and Swahili voices and each channel's default voice are unchanged.
+
 ### Changed
 - Everything you see while the tool runs is now in English: progress messages, warnings and errors in the clipping pipeline, providers and render steps.
 - The AI instructions (clip picking and voice-over script) are now written in English, and all titles, captions and descriptions are requested in English for an English-speaking African and worldwide audience. Field names in the JSON stay the same.

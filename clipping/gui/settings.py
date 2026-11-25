@@ -20,6 +20,8 @@ import os
 import sys
 from dataclasses import dataclass, field
 
+from clipping.editor.voice import VOICES as _EDITOR_VOICES
+
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MAIN_PY = os.path.join(REPO_DIR, "main.py")
 SETTINGS_FILE = os.path.join(REPO_DIR, "studio_settings.json")
@@ -53,19 +55,9 @@ CLIP_LENGTHS = {
     "Long, up to 3 minutes": (20, 179),
 }
 
-VOICES = [
-    "en-GB-MaisieNeural",
-    "en-GB-RyanNeural",
-    "en-US-GuyNeural",
-    "en-US-AriaNeural",
-    "en-US-ChristopherNeural",
-    "en-KE-ChilembaNeural",
-    "en-KE-AsiliaNeural",
-    "en-NG-AbeoNeural",
-    "en-NG-EzinneNeural",
-    "en-ZA-LukeNeural",
-    "en-ZA-LeahNeural",
-]
+# The Clip Editor's free voices (most popular first), plus the Studio's own extras.
+_STUDIO_EXTRA_VOICES = ["en-GB-MaisieNeural", "en-ZA-LukeNeural", "en-ZA-LeahNeural"]
+VOICES = [v[0] for v in _EDITOR_VOICES] + [v for v in _STUDIO_EXTRA_VOICES if v not in {x[0] for x in _EDITOR_VOICES}]
 
 API_KEYS = [
     ("GOOGLE_API_KEY", "Gemini API key (backup AI, recommended)", "https://aistudio.google.com/apikey"),
@@ -153,6 +145,7 @@ LABELS = {
     "claude_max_sheets": "Pictures of the whole video (sheets of 9 frames)",
     "story_mode": "Story mode",
     "story_brief": "Story direction",
+    "story_angles": "Story angles (one per line)",
     "gemini_model": "Gemini model",
     "gemini_fallback_model": "Gemini backup model",
     "load_gemini_json": "Reuse the last AI answer (skip the AI step)",

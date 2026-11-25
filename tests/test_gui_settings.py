@@ -106,3 +106,20 @@ def test_output_splitter_handles_progress_and_lines():
     out += s.flush()
     assert out == [("line", "hello"), ("progress", " 10%"), ("progress", " 20%"),
                    ("line", " 30%"), ("line", "done"), ("line", "tail")]
+
+
+def test_studio_voice_list_has_popular_free_voices_and_keeps_old_ones():
+    from clipping.gui import settings as S
+    for wanted in ("en-US-GuyNeural", "en-US-AriaNeural", "en-US-JennyNeural", "en-US-BrianNeural",
+                   "en-US-AndrewNeural", "en-GB-RyanNeural", "en-GB-MaisieNeural", "en-ZA-LukeNeural",
+                   "en-KE-ChilembaNeural"):
+        assert wanted in S.VOICES
+    assert len(S.VOICES) == len(set(S.VOICES))
+
+
+def test_story_angles_reach_main_one_per_line(fields):
+    values = S.default_values(fields)
+    assert "--story-angles" not in S.build_command(fields, values, ["u"])
+    values["story_angles"] = "A heist gone wrong\nA rookie's first day"
+    args = _build_parser().parse_args(S.build_command(fields, values, ["u"])[3:])
+    assert args.story_angles == "A heist gone wrong\nA rookie's first day"

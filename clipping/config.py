@@ -536,6 +536,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Your direction for the story, e.g. 'A Nairobi hustler narrates a GTA 6 heist crew that keeps "
              "falling apart'. Leave empty and the AI chooses.",
     )
+    claude_group.add_argument(
+        "--story-angles",
+        default="",
+        help="Several angles for the story, one per line (or separated by '|'), e.g. 'A heist gone wrong' and "
+             "'A nervous rookie's first day'. Each Short is told through its own angle (up to 8), spread "
+             "over the Shorts in order. Works with --story-mode series and standalone.",
+    )
     p.add_argument(
         "--nvidia-model",
         default=NVIDIA_MODEL,
@@ -1033,6 +1040,7 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         claude_max_sheets=args.claude_max_sheets,
         story_mode=args.story_mode,
         story_brief=args.story_brief,
+        story_angles=args.story_angles,
         api_key_anthropic=env_key("ANTHROPIC_API_KEY"),
         api_key_nvidia=env_key("NVIDIA_API_KEY"),
         nvidia_model=args.nvidia_model,

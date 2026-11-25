@@ -27,14 +27,37 @@ VOICE_DIR = "Voice"
 
 # (voice id, what to show, language). The free Microsoft neural voices edge-tts offers.
 VOICES = (
+    # The voices most often heard on Shorts and Reels come first, since people
+    # tend to pick what they already know. All are free (edge-tts).
+    ("en-US-GuyNeural", "Guy · American English (man)", "en"),
+    ("en-US-AriaNeural", "Aria · American English (woman)", "en"),
+    ("en-US-JennyNeural", "Jenny · American English (woman)", "en"),
+    ("en-US-BrianNeural", "Brian · American English (man)", "en"),
+    ("en-US-BrianMultilingualNeural", "Brian Multilingual · American English (man)", "en"),
+    ("en-US-AndrewNeural", "Andrew · American English (man)", "en"),
+    ("en-US-AndrewMultilingualNeural", "Andrew Multilingual · American English (man)", "en"),
+    ("en-US-ChristopherNeural", "Christopher · American English (man)", "en"),
+    ("en-US-EricNeural", "Eric · American English (man)", "en"),
+    ("en-US-RogerNeural", "Roger · American English (man)", "en"),
+    ("en-US-SteffanNeural", "Steffan · American English (man)", "en"),
+    ("en-US-AvaNeural", "Ava · American English (woman)", "en"),
+    ("en-US-AvaMultilingualNeural", "Ava Multilingual · American English (woman)", "en"),
+    ("en-US-EmmaNeural", "Emma · American English (woman)", "en"),
+    ("en-US-EmmaMultilingualNeural", "Emma Multilingual · American English (woman)", "en"),
+    ("en-US-MichelleNeural", "Michelle · American English (woman)", "en"),
+    ("en-US-AnaNeural", "Ana · American English (girl)", "en"),
+    ("en-GB-RyanNeural", "Ryan · British English (man)", "en"),
+    ("en-GB-SoniaNeural", "Sonia · British English (woman)", "en"),
+    ("en-GB-LibbyNeural", "Libby · British English (woman)", "en"),
+    ("en-AU-NatashaNeural", "Natasha · Australian English (woman)", "en"),
+    ("en-IN-PrabhatNeural", "Prabhat · Indian English (man)", "en"),
+    ("en-IN-NeerjaNeural", "Neerja · Indian English (woman)", "en"),
     ("en-KE-AsiliaNeural", "Asilia · Kenyan English (woman)", "en"),
     ("en-KE-ChilembaNeural", "Chilemba · Kenyan English (man)", "en"),
     ("en-NG-AbeoNeural", "Abeo · Nigerian English (man)", "en"),
     ("en-NG-EzinneNeural", "Ezinne · Nigerian English (woman)", "en"),
     ("sw-KE-RafikiNeural", "Rafiki · Swahili (man)", "sw"),
     ("sw-KE-ZuriNeural", "Zuri · Swahili (woman)", "sw"),
-    ("en-US-GuyNeural", "Guy · American English (man)", "en"),
-    ("en-GB-RyanNeural", "Ryan · British English (man)", "en"),
 )
 
 # One default voice per channel (Kids: Swahili, gentle).
