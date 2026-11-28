@@ -44,6 +44,7 @@ APP_DEFAULTS = {
     "whisper_device": "cpu",
     "whisper_compute_type": "int8",
     "whisper_model": "small",
+    "join": True,
 }
 
 CLIP_LENGTHS = {
@@ -133,6 +134,8 @@ LABELS = {
     "padding": "Watermark padding (pixels)",
     "watermark_font_size": "Watermark text size (0 = auto)",
     "watermark_scale": "Watermark image size (% of height)",
+    "join": "Join links into one story",
+    "storyline_cuts": "Follow my story times",
     "yt_cookies": "YouTube cookies (browser name or cookies.txt)",
     "source": "Where the video comes from",
     "source_height": "Download quality (max height)",
@@ -180,6 +183,8 @@ def _section_for(dest: str) -> str:
         return "Music and B-roll"
     if d in ("watermark", "text", "image", "opacity", "position", "padding") or d.startswith("watermark_"):
         return "Watermark"
+    if d in ("join", "storyline_cuts"):
+        return "Clips"
     if d in ("yt_cookies", "source", "source_height", "use_dlp_subs", "cleanup_source"):
         return "Download"
     if d.startswith(("whisper", "gemini", "nvidia", "vllm", "local_")) or d in ("ai_provider", "load_gemini_json"):

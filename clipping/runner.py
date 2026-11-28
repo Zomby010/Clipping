@@ -5,11 +5,94 @@ Maps to Cell 4 (Execute) of the notebook.
 Orchestrates the full clip generation pipeline.
 """
 
+import glob
 import json
 import os
 
 from . import diarization as diarization_mod
-from . import engine, metadata, studio, hook_manager, voiceover
+from . import engine, metadata, sources, studio, hook_manager, voiceover
+
+
+def _download(cfg, url, path):
+    engine.download_video(
+        url,
+        path,
+        getattr(cfg, "use_dlp_subs", False),
+        getattr(cfg, "download_source_height", "max"),
+        source_platform=getattr(cfg, "source_platform", "youtube"),
+        yt_cookies=getattr(cfg, "yt_cookies", None),
+    )
+
+
+def _transcribe(cfg, video, whisper_model_instance):
+    """The video's own subtitles if you asked for them and they exist, else Whisper."""
+    text, segments = "", []
+    # Find any json3 file (the language can be .id.json3 or .en.json3)
+    json3_files = glob.glob(video.replace(".mp4", ".*.json3"))
+    # Only run YouTube JSON3 subtitle search for YouTube sources
+    if (getattr(cfg, "source_platform", "youtube") == "youtube"
+            and getattr(cfg, "use_dlp_subs", False) and json3_files):
+        text, segments = engine.parse_youtube_json3_subs(
+            json3_files[0], max_words_per_subtitle=cfg.max_kata_per_subtitle
+        )
+        if text and segments:
+            print(f"✅ Read the YouTube subtitles ({os.path.basename(json3_files[0])}), skipping Whisper.")
+    if not text or not segments:
+        text, segments = engine.transcribe_video(
+            video,
+            max_words_per_subtitle=cfg.max_kata_per_subtitle,
+            model_size=cfg.whisper_model,
+            device=cfg.whisper_device,
+            compute_type=cfg.whisper_compute_type,
+            whisper_model_instance=whisper_model_instance,
+        )
+    return text, segments
+
+
+def _prepare_joined(cfg, urls, whisper_model_instance):
+    """Download every link, join them into one video and one transcript."""
+    paths = []
+    for n, url in enumerate(urls, 1):
+        print(f"\n📹 Video {n} of {len(urls)}: {url}")
+        path = sources.part_path(cfg.outputs_dir, url)
+        sources.claim(path, [url], getattr(cfg, "download_source_height", "max"))
+        _download(cfg, url, path)
+        paths.append(path)
+
+    height = getattr(cfg, "download_source_height", "max")
+    reused = sources.claim(cfg.file_video_asli, urls, height)
+    saved = os.path.splitext(cfg.file_video_asli)[0] + "_offsets.json"
+    if reused and os.path.exists(cfg.file_video_asli) and os.path.exists(saved):
+        with open(saved, "r", encoding="utf-8") as f:
+            offsets = json.load(f)
+    else:
+        offsets = sources.join_videos(paths, cfg.file_video_asli)
+        with open(saved, "w", encoding="utf-8") as f:
+            json.dump(offsets, f)
+    total = sources.probe(cfg.file_video_asli)["duration"]
+
+    text, segments, creators = "", [], []
+    for n, (path, offset) in enumerate(zip(paths, offsets), 1):
+        part_text, part_segments = sources.shift_transcript(
+            *_transcribe(cfg, path, whisper_model_instance), offset)
+        text += part_text if part_text.endswith("\n") else part_text + "\n"
+        segments += part_segments
+        creators += engine.load_source_creators(path)
+        title = ""
+        try:
+            with open(os.path.splitext(path)[0] + "_source.json", encoding="utf-8") as f:
+                title = json.load(f).get("title", "")
+        except (OSError, ValueError):
+            pass
+        end = offsets[n] if n < len(offsets) else total
+        cfg.source_parts.append({"start": offset, "end": end, "title": title})
+    cfg.source_creators = sorted(set(creators))
+
+    # "V2 11:40" in your storyline now points into the joined video.
+    cfg.story_brief = sources.to_joined_times(getattr(cfg, "story_brief", ""), offsets)
+    cfg.story_angles = sources.to_joined_times(
+        getattr(cfg, "story_angles", "").replace("|", "\n"), offsets)
+    return text, segments
 
 
 def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
@@ -41,59 +124,35 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
 
     validate_analysis_config(cfg, probe=getattr(cfg, "ai_provider", "gemini") == "vllm")
 
-    # Step 1 — Download
-    source_platform = getattr(cfg, "source_platform", "youtube")
-    engine.download_video(
-        cfg.url_youtube,
-        cfg.file_video_asli,
-        getattr(cfg, "use_dlp_subs", False),
-        getattr(cfg, "download_source_height", "max"),
-        source_platform=source_platform,
-        yt_cookies=getattr(cfg, "yt_cookies", None),
-    )
+    joined = list(getattr(cfg, "join_urls", None) or [])
+    cfg.source_parts = []
+    if joined:
+        transkrip_lengkap, data_segmen = _prepare_joined(cfg, joined, whisper_model_instance)
+    else:
+        # Step 1 — Download (a saved video is only reused for this same link and quality)
+        sources.claim(cfg.file_video_asli, [cfg.url_youtube], getattr(cfg, "download_source_height", "max"))
+        _download(cfg, cfg.url_youtube, cfg.file_video_asli)
 
-    # Step 2 — Transcribe
-    transkrip_lengkap = ""
-    data_segmen = []
+        # Step 2 — Transcribe
+        transkrip_lengkap, data_segmen = _transcribe(cfg, cfg.file_video_asli, whisper_model_instance)
 
-    import glob
-
-    # Find any json3 file (the language can be .id.json3 or .en.json3)
-    json3_files = glob.glob(cfg.file_video_asli.replace(".mp4", ".*.json3"))
-    file_json3 = json3_files[0] if json3_files else None
-
-    # Only run YouTube JSON3 subtitle search for YouTube sources
-    if source_platform == "youtube":
-        if (
-            getattr(cfg, "use_dlp_subs", False)
-            and file_json3
-            and os.path.exists(file_json3)
-        ):
-            transkrip_lengkap, data_segmen = engine.parse_youtube_json3_subs(
-                file_json3, max_words_per_subtitle=cfg.max_kata_per_subtitle
-            )
-            if transkrip_lengkap and data_segmen:
-                print(
-                    f"✅ Read the YouTube subtitles ({os.path.basename(file_json3)}), skipping Whisper."
-                )
-
-    if not transkrip_lengkap or not data_segmen:
-        transkrip_lengkap, data_segmen = engine.transcribe_video(
-            cfg.file_video_asli,
-            max_words_per_subtitle=cfg.max_kata_per_subtitle,
-            model_size=cfg.whisper_model,
-            device=cfg.whisper_device,
-            compute_type=cfg.whisper_compute_type,
-            whisper_model_instance=whisper_model_instance,
-        )
-
-    # Who made the source video (saved at download), so the AI never claims it as ours.
-    cfg.source_creators = engine.load_source_creators(cfg.file_video_asli)
+        # Who made the source video (saved at download), so the AI never claims it as ours.
+        cfg.source_creators = engine.load_source_creators(cfg.file_video_asli)
 
     # Step 3 — Gemini AI analysis
     gemini_output_path = os.path.join(cfg.outputs_dir, "gemini_response.json")
     
-    if getattr(cfg, "load_gemini_json", False) and os.path.exists(gemini_output_path):
+    # A saved AI answer is only reused for the links it was made from.
+    links_now = [sources.link_id(u) for u in joined or [cfg.url_youtube]]
+    answer_key = os.path.join(cfg.outputs_dir, "ai_answer_links.json")
+    reuse = getattr(cfg, "load_gemini_json", False) and os.path.exists(gemini_output_path)
+    if reuse and os.path.exists(answer_key):
+        with open(answer_key, "r", encoding="utf-8") as f:
+            if json.load(f) != links_now:
+                print("\n⚠️ The saved AI answer is for a different link, so the AI will look again.")
+                reuse = False
+
+    if reuse:
         print(f"\n🔄 [3/3] Loading the saved AI answer ({cfg.ai_provider}) from: {gemini_output_path}")
         with open(gemini_output_path, "r", encoding="utf-8") as f:
             hasil_json = json.load(f)
@@ -113,6 +172,8 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
         # Save raw gemini json for future loading/reproduction
         with open(gemini_output_path, "w", encoding="utf-8") as f:
             json.dump(hasil_json, f, indent=4, ensure_ascii=False)
+        with open(answer_key, "w", encoding="utf-8") as f:
+            json.dump(links_now, f)
         print(f"💾 AI answer saved to: {gemini_output_path}")
         save_run_metadata(cfg)
 
@@ -123,6 +184,8 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
 
     # Step 4 — Metadata normalisation
     hasil_json = metadata.normalize_and_validate(hasil_json)
+    if getattr(cfg, "storyline_cuts", False):
+        sources.fit_bounds(hasil_json)
     metadata.print_preview(hasil_json)
 
     metadata_path = os.path.join(cfg.outputs_dir, "metadata_preview.json")
@@ -298,7 +361,7 @@ def run_pipeline(cfg, whisper_model_instance=None) -> list[dict]:
     for row in render_manifest:
         # Attach source URL so metadata.py can auto-add source credit
         if not row.get("source_url"):
-            row["source_url"] = getattr(cfg, "url_youtube", None)
+            row["source_url"] = " ".join(joined) or getattr(cfg, "url_youtube", None)
 
     # Step 7.5 — Tidy the finished files into "My Clips/<date - title>/"
     if getattr(cfg, "organize_library", True):

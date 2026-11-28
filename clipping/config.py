@@ -265,6 +265,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="One or more video URLs to process (space-separated). Supports YouTube, TikTok, Instagram, Google Drive.",
     )
     p.add_argument(
+        "--join", action="store_true", default=False,
+        help="Join two or more links into one video, so each clip's story can use moments from all of them. "
+             "In story angles, 'V2 11:40' means 11:40 in the second link.",
+    )
+    p.add_argument(
+        "--storyline-cuts", action="store_true", default=False,
+        help="Let one clip use moments from anywhere in the video, following your story angles. "
+             "Always on with --join.",
+    )
+    p.add_argument(
         "--yt-cookies", type=str, default=None,
         help="Cookies from browser (e.g. 'chrome', 'firefox') or path to cookies.txt for yt-dlp",
     )
@@ -963,6 +973,8 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         source_platform="tiktok" if args.tiktok else args.source,
         url_youtube=url_list[0] if len(url_list) == 1 else url_list,
         url_list=url_list,
+        join_urls=list(url_list) if args.join and len(url_list) > 1 else [],
+        storyline_cuts=bool(args.storyline_cuts or (args.join and len(url_list) > 1)),
         yt_cookies=args.yt_cookies,
         cleanup_source=args.cleanup_source,
         jumlah_clip=args.clips,
@@ -981,7 +993,7 @@ def build_config(argv: list[str] | None = None) -> SimpleNamespace:
         hook_v2_items=args.hook_v2_items,
         hook_v2_style=args.hook_v2_style,
         white_flash_duration=args.white_flash_duration,
-        no_segment_trim=args.no_segment_trim,
+        no_segment_trim=args.no_segment_trim and not (args.storyline_cuts or (args.join and len(url_list) > 1)),
         silence_trim=args.silence_trim,
         use_broll=not args.no_broll and bool(env_key("PEXELS_API_KEY")),
         broll_off_reason=(

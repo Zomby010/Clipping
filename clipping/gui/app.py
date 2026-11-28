@@ -45,6 +45,12 @@ COLORS = {
 }
 
 
+# Label -> value of "use the video's own subtitles". Whisper is used if the video has none.
+SUBTITLE_SOURCES = {"Make my own (Whisper)": False, "Use the video's subtitles": True}
+DOWNLOAD_HEIGHTS = ["max", "2160", "1440", "1080", "720"]
+WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
+
+
 class ScrollFrame(ttk.Frame):
     """A frame with a vertical scrollbar (mouse wheel works on Linux too)."""
 
@@ -292,7 +298,7 @@ class StudioApp:
         ttk.Button(prof, text="Save as…", command=self.save_profile).pack(side="left", padx=(6, 0))
         ttk.Button(prof, text="Delete", command=self.delete_profile).pack(side="left", padx=(6, 0))
 
-        ttk.Label(t, text="Paste video links (one per line). Every setting is under 'All settings'.",
+        ttk.Label(t, text="Paste video links (one per line). In story angles, 'V2 11:40' means 11:40 in the second link.",
                   style="Sub.TLabel").pack(anchor="w", pady=(4, 8))
 
         links_card = ttk.Frame(t, style="Card.TFrame", padding=10)
@@ -305,14 +311,14 @@ class StudioApp:
         if saved_links:
             self.links.insert("1.0", saved_links)
 
-        quick = ttk.LabelFrame(t, text="Quick choices", style="Card.TLabelframe", padding=12)
-        quick.pack(fill="x", pady=10)
+        quick = ttk.LabelFrame(t, text="Quick choices", style="Card.TLabelframe", padding=6)
+        quick.pack(fill="x", pady=4)
         for c in range(4):
             quick.columnconfigure(c, weight=1)
 
         def cell(row, col, label, widget_factory):
             box = ttk.Frame(quick, style="Card.TFrame")
-            box.grid(row=row, column=col, sticky="ew", padx=6, pady=5)
+            box.grid(row=row, column=col, sticky="ew", padx=6, pady=1)
             ttk.Label(box, text=label, style="Card.TLabel").pack(anchor="w")
             w = widget_factory(box)
             w.pack(fill="x", pady=(2, 0))
@@ -352,7 +358,7 @@ class StudioApp:
             p, textvariable=self.vars["story_mode"], state="readonly",
             values=self.by_dest["story_mode"].choices))
         brief_box = ttk.Frame(quick, style="Card.TFrame")
-        brief_box.grid(row=2, column=1, columnspan=3, sticky="ew", padx=6, pady=5)
+        brief_box.grid(row=2, column=1, columnspan=3, sticky="ew", padx=6, pady=1)
         ttk.Label(brief_box, text="Story direction (optional: who and what, the overall tone)",
                   style="Card.TLabel").pack(anchor="w")
         line = ttk.Frame(brief_box, style="Card.TFrame")
@@ -366,8 +372,22 @@ class StudioApp:
         self.vars["story_angles"].trace_add("write", lambda *a: self._angles_var_changed())
         self._refresh_angles_button()
 
+        words = cell(3, 0, "Subtitles (the words)", lambda p: ttk.Combobox(
+            p, state="readonly", values=list(SUBTITLE_SOURCES)))
+        self._follow(words, "use_dlp_subs", SUBTITLE_SOURCES)
+        cell(3, 1, "Download quality (max height)", lambda p: ttk.Combobox(
+            p, textvariable=self.vars["source_height"], state="readonly", values=DOWNLOAD_HEIGHTS))
+        cell(3, 2, "Whisper model", lambda p: ttk.Combobox(
+            p, textvariable=self.vars["whisper_model"], values=WHISPER_MODELS))
+
+        links_box = ttk.Frame(quick, style="Card.TFrame")
+        links_box.grid(row=3, column=3, sticky="sw", padx=6)
+        for dest in ("join", "storyline_cuts"):
+            ttk.Checkbutton(links_box, text=self.by_dest[dest].label, variable=self.vars[dest],
+                            style="Card.TCheckbutton").pack(anchor="w")
+
         checks = ttk.Frame(quick, style="Card.TFrame")
-        checks.grid(row=3, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
+        checks.grid(row=4, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
         for i, dest in enumerate(("voiceover", "no_reactions", "no_bgm", "no_subs",
                                   "no_broll", "no_hook", "watermark", "cleanup_source")):
             ttk.Checkbutton(checks, text=self.by_dest[dest].label, variable=self.vars[dest],
@@ -405,6 +425,17 @@ class StudioApp:
         self.log.configure(yscrollcommand=bar.set, state="disabled")
         self.log.pack(side="left", fill="both", expand=True)
         bar.pack(side="right", fill="y")
+
+    def _follow(self, box, dest: str, choices: dict):
+        """Keep a drop-down with friendly names in step with a setting."""
+        var = self.vars[dest]
+
+        def show(*_):
+            box.set(next(name for name, value in choices.items() if value == bool(var.get())))
+
+        box.bind("<<ComboboxSelected>>", lambda e: var.set(choices[box.get()]))
+        var.trace_add("write", show)
+        show()
 
     def _sync_length_choice(self):
         if not hasattr(self, "length_var"):

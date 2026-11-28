@@ -123,11 +123,13 @@ def main():
         sys.exit(1)
 
     url_list = getattr(cfg, "url_list", [cfg.url_youtube] if isinstance(cfg.url_youtube, str) else cfg.url_youtube)
-    is_batch = len(url_list) > 1
+    is_batch = len(url_list) > 1 and not getattr(cfg, "join_urls", None)
 
     # ── Single URL Mode (backward-compatible) ────────────────────────
     if not is_batch:
-        _run_single_url(cfg, url_list[0], version)
+        if getattr(cfg, "join_urls", None):
+            cfg.url_youtube = url_list[0]
+        _run_single_url(cfg, " + ".join(url_list), version)
         print("\n✅ Done! All clips have been rendered.")
         return
 
