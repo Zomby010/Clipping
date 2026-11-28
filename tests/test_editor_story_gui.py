@@ -184,9 +184,10 @@ def test_script_captions_original_level_and_voice_lane(ready):
     # a click on a voice-over block selects the line on the Story tab
     ln = a.project.script_lines[0]
     total = a.project.total_length
-    x = 92 + (ln["start"] + 0.1) / total * (a.timeline.winfo_width() - 8 - 92)
+    from clipping.editor.gui import app as A
+    x = A.LANE_LABEL_W + (ln["start"] + 0.1) / total * (a.timeline.winfo_width() - 8 - A.LANE_LABEL_W)
     a.timeline.update()
-    ev = type("E", (), {"x": x, "y": 3 + 16 + 5})()
+    ev = type("E", (), {"x": x, "y": A.LANE_TOP + A.LANES.index("Voice-over") * (A.LANE_H + 2) + 5})()
     a._timeline_click(ev)
     assert a.script_tree.selection() == (ln["id"],)
 

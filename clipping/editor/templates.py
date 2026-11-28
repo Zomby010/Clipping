@@ -29,7 +29,7 @@ def from_project(project) -> dict:
     """The parts of an edit that make up its channel's look."""
     audio = project.audio if isinstance(project.audio, dict) else {}
     music = {k: v for k, v in (audio.get("music") or {}).items() if k in MUSIC_KEYS}
-    framing = project.segments[0].framing.mode if project.segments else "auto"
+    framing = next((s.framing.mode for s in project.segments if not s.reaction), "auto")
     up = project.upload or {}
     return {
         "channel": project.channel,
@@ -86,7 +86,8 @@ def apply(project, template: dict, new_edit: bool = False) -> None:
     mode = template.get("framing")
     if mode in P.FRAMING_MODES:
         for seg in project.segments:
-            seg.framing.mode = mode
+            if not seg.reaction:
+                seg.framing.mode = mode
     up = project.upload if isinstance(project.upload, dict) else {}
     project.upload = up
     if template.get("hashtags") and (new_edit or not up.get("hashtags")):

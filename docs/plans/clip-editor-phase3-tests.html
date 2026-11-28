@@ -1,0 +1,134 @@
+<title>Clip Editor Phase 3 Tests</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap">
+<style>
+/* Layout: one column checklist, sticky tally on top, grouped by phase. Same look as the phase test pages. */
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#5d6779;--line:#dde1e8;--accent:#c2410c;--pass:#18794e;--fail:#c0262d;--on:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 Inter,system-ui,sans-serif;padding-block:0 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:760px;margin:0 auto}
+h1,h2{font-family:"Space Grotesk",Inter,sans-serif;text-wrap:balance}
+h1{font-size:28px;margin:24px 0 4px}
+h2{font-size:18px;margin:28px 0 4px}
+p{margin:4px 0 8px;color:var(--muted)}
+code{overflow-wrap:anywhere;color:var(--fg);font-size:13px}
+#bar{position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;z-index:2;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:4px 16px}
+#save{color:var(--muted)}#save.err{color:var(--fail)}
+.t{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 8px}
+.t b{color:var(--accent);font-variant-numeric:tabular-nums}
+.exp{color:var(--muted)}
+.ctl{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+button{font:600 13px Inter,sans-serif;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:6px 14px;cursor:pointer}
+button.p[aria-pressed="true"]{background:var(--pass);border-color:var(--pass);color:var(--on)}
+button.f[aria-pressed="true"]{background:var(--fail);border-color:var(--fail);color:var(--on)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input{flex:1 1 200px;min-width:0;font:inherit;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button:disabled,input:disabled{opacity:.5;cursor:default}
+</style>
+<main>
+<h1>Clip Editor: phase 3 tests</h1>
+<p>Starts with the four phase 2 tests still to do and retests of the phase 2 fixes, then phase 3 (Story and Voice). Mark each Pass or Fail and note what you saw.</p>
+<p><b>Before you start:</b> close and reopen Clip Editor, then press <b>New</b>. Older test edits still have the whole-clip moment.</p>
+<p>Test video: <code>outputs/video_asli.mp4</code></p>
+<div id="bar"><span id="tally"></span><span id="save" role="status">Loading your saved marks…</span></div>
+<div id="list"></div>
+</main>
+<script>
+// Ids are the saved keys: never renumber an existing one.
+const GROUPS=[
+["Retest first: fixes from your 27 November marks","Close and reopen Clip Editor first.",[
+["R11","Type a hook, then try each Movement while watching My cut. Also try a hook of only emoji","The cut replays the hook, and each movement looks different"],
+["R12","Tick Box behind it, then press Colour… and pick another colour, with words and with only emoji","The box shows in the colour you picked"],
+["R13","On Story, use the mouse wheel over the scene list and the script. Press Suggest 3 angles","Each list scrolls by itself, angles are readable in full, and Whole script shows every line"],
+["R14","Open the Export tab after watching My cut. Press ◀ 0.5 s and 0.5 s ▶, then type cover text and press Enter","The cover picture is shown and changes each time"],
+["R15","Click on the Original video lane and on the Moments lane of the timeline","Original video shows where your moments come from and clicking it goes there; Moments is your cut"],
+["R16","In a new edit press Make captions","It switches to My cut and the captions are on the picture"],
+["R17","On the Voice tab pick one line, choose another voice under Voice for the picked line, then press Make voices and Play line","Only that line speaks in the new voice; Automatic puts it back"],
+["R18","Move Voice-over volume to about 40 %, play your cut, then try about 160 %, and export once","The voice gets quieter, then louder without crackling; the export sounds the same as My cut"]]],
+["Start here: phase 2, cover and upload text (Export tab)","Press New, add the test video, channel GTA 6, add 1:02-1:10, 2:38-2:49.",[
+["2.23","Change the channel before editing any upload text: Sports, then GTA 6","Hashtags change to suit the channel"],
+["2.24","In My cut pause on a good frame, then press Use this frame as the cover","The text says the cover is that time and that you picked it"],
+["2.25","Type a title longer than 100 letters, then shorten it","The counter warns it is too long, then the warning goes"],
+["2.26","Set the channel to Kids, look at the Export tab, then set GTA 6 again","A red note says to mark the video as made for kids"]]],
+["Phase 2 retests: moments and My cut","Same edit.",[
+["R1","Open a clip with My Clips…, then type a moment such as 0:00-0:10","The whole-clip moment goes, and the total is only your moment. Undo brings it back"],
+["R2","With two moments, watch My cut, click moment 1 and press Play. Press Play again, then click moment 2 and Play","It stops at the end of the moment, replays it on the second press, and the words above the player say which moment"],
+["R3","Untick Stop after each moment and play from the start","The whole cut plays through"],
+["R4","Pick moment 2, press Move up, then Alt+↓","It moves up, then back down. All button labels are readable"]]],
+["Phase 2 retests: captions","Use the test video added with Add video…, which keeps clips with burned-in captions out of it.",[
+["R5","Press Make captions, then scroll the list with the mouse wheel and the scrollbar","Every line can be reached, and each shows its moment number"],
+["R6","Fix a word, add a third moment, press Make captions again","No question is asked, only the new moment gets captions, and your fixed word stays"],
+["R7","Fix a word and delete a line, then replay My cut","The picture shows the new word and not the deleted line. The sound is unchanged"],
+["R8","Open a My Clips clip, add a moment, press Make captions and answer No","It warns that the clip already has captions in the picture, and nothing is made"]]],
+["Phase 2 retests: hook and emoji (Hook and text tab)","Same edit as above.",[
+["2.18","Set Seconds on screen to 4, then use Add emoji and pick one","Emoji are visible in the menu, the hook stays 4 seconds at the start of your cut, and the emoji shows in colour"],
+["R9","Try each Movement: Pop, Bounce, Slide down, Shake","Each one looks different in My cut"],
+["R10","Tick Orange box behind it, then untick it","The hook gets the box, then loses it"]]],
+["Phase 3: watching and the script (Story tab)","Press New and add the test video. Claude uses your Claude plan and needs the internet.",[
+["3.1","Press Ask Claude to watch","A list of scenes appears, with ★ on the strong ones. Check a few against the video"],
+["3.2","Pick a scene and press Add to cut, then press Add all ★","The scenes appear in the cut list with matching times"],
+["3.3","Choose each mode, then press Suggest 3 angles and click one","The help text matches the mode and the angle fills the box"],
+["3.4","In New story, add a character with a name, who they are and a voice, then Remove it and add it again","The list updates each time"],
+["3.5","In Explain mode press Write the script","Lines appear for your moments, short enough to fit them"],
+["3.6","Edit a line, press ◀ 0.5 s and 0.5 s ▶, then Delete line and Undo","Each change shows in the list and timeline"],
+["3.7","Pick a line, type \"funnier\" and press Rewrite","Only that line changes"],
+["3.8","Move a moment up or down, then look at the script","Lines stay with their moments"],
+["3.9","Write something in Series memory, close the app and reopen it","It is still there"]]],
+["Phase 3: voices (Voice tab)","Same edit.",[
+["3.10","Choose a voice and press Play sample","You hear that voice"],
+["3.11","Press Make voices, then Play line on two lines","Each voice speaks its line over its own footage"],
+["3.12","Change a line's words, press Make voices and Play line","The voice says the new words"],
+["3.13","Make a line too long for its moment, make voices, then press Speed up this line or Shorten with Claude","It was red, and now fits"],
+["3.14","Press Record with mic, read the line, press Stop recording, then Play line","A 3-2-1 countdown, then your own voice plays"],
+["3.15","On Framing move Original sound of this moment, and on Voice tick Keep game sounds, remove talking","The original gets quieter or louder, and speech is reduced while game sounds stay"],
+["3.16","Press Make captions and choose the script","Captions match the narrator's words and light up with the voice"],
+["3.17","In a new edit with a video, press Ask Claude (top bar) and follow each step","It watches, then helps with angle, script and voices in order"]]]
+];
+
+const list=document.getElementById('list'),save=document.getElementById('save'),tally=document.getElementById('tally');
+const rows={},state={},queue={};
+let db=null;
+const say=(t,err)=>{save.textContent=t;save.className=err?'err':''};
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e};
+for(const [name,about,tests] of GROUPS){
+  list.append(el('h2','',name),el('p','',about));
+  for(const [num,act,exp] of tests){
+    const id='p'+num.replace('.','-');   // R1.. are saved as pR1..
+    state[id]={status:'',note:''};
+    const box=el('div','t'),body=el('div'),ctl=el('div','ctl');
+    body.append(el('div','',act),el('div','exp','Pass if: '+exp));
+    const p=el('button','p','Pass'),f=el('button','f','Fail'),note=el('input');
+    note.id='note-'+id;note.placeholder='What did you see?';note.setAttribute('aria-label','Note for test '+num);
+    for(const [b,v] of [[p,'pass'],[f,'fail']]){b.type='button';b.disabled=true;b.onclick=()=>{state[id].status=state[id].status===v?'':v;paint(id);write(id)}}
+    note.disabled=true;note.onchange=()=>{state[id].note=note.value;write(id)};
+    ctl.append(p,f,note);box.append(el('b','',num),body,ctl);list.append(box);
+    rows[id]={p,f,note};
+  }
+}
+function paint(id){
+  const r=rows[id],s=state[id];
+  r.p.setAttribute('aria-pressed',s.status==='pass');r.f.setAttribute('aria-pressed',s.status==='fail');
+  if(document.activeElement!==r.note)r.note.value=s.note;
+  const all=Object.values(state),pass=all.filter(x=>x.status==='pass').length,fail=all.filter(x=>x.status==='fail').length;
+  tally.textContent=`${pass} passed · ${fail} failed · ${all.length-pass-fail} to do`;
+}
+function write(id){
+  say('Saving…');
+  const data={status:state[id].status,note:state[id].note,at:Date.now()};
+  queue[id]=(queue[id]||Promise.resolve()).then(()=>db.collection('results').doc(id).set(data))
+    .then(()=>say('Saved'),e=>say('Not saved ('+((e&&e.code)||'unknown')+'). Mark it again, or tell Claude in the terminal.',true));
+}
+Object.keys(rows).forEach(paint);
+(async()=>{
+  const timer=setTimeout(()=>say('Saved marks did not load. Open this page signed in to claude.ai.',true),10000);
+  try{db=await claude.use('db')}catch(e){}
+  if(!db){clearTimeout(timer);say('Marks cannot be saved in this view. Open this page signed in to claude.ai.',true);return}
+  db.collection('results').onSnapshot(snap=>{
+    clearTimeout(timer);
+    snap.docs.forEach(d=>{if(state[d.id]){const v=d.data();state[d.id]={status:v.status||'',note:v.note||''};paint(d.id)}});
+    Object.values(rows).forEach(r=>r.p.disabled=r.f.disabled=r.note.disabled=false);
+    say('Saved');
+  },e=>{clearTimeout(timer);say('Could not load your marks ('+((e&&e.code)||'unknown')+').',true)});
+})();
+</script>

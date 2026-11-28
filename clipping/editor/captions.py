@@ -320,12 +320,23 @@ def transcribe_range(path: str, start: float, end: float, transcriber, cache_dir
     return words
 
 
+def uncaptioned(project) -> list:
+    """Moments with sound that have never had captions made."""
+    have = {c.get("segment_id") for c in project.captions}
+    out = []
+    for s in project.segments:
+        src = project.source(s.source_id)
+        if not s.captioned and not s.reaction and s.id not in have and src is not None and src.has_audio:
+            out.append(s)
+    return out
+
+
 def transcribe_segments(project, transcriber, cache_dir: str, max_words: int = 4,
-                        progress=None, cancel=None) -> list[dict]:
+                        progress=None, cancel=None, only=None) -> list[dict]:
     """New captions for every moment in the cut list (does not change the
     project; the caller swaps them in)."""
     out: list[dict] = []
-    segs = list(project.segments)
+    segs = [s for s in project.segments if not s.reaction and (only is None or s.id in only)]
     for n, seg in enumerate(segs, start=1):
         if cancel is not None and cancel.is_set():
             from clipping.editor.render import Cancelled

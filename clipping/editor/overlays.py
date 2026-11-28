@@ -48,6 +48,7 @@ LOGOS_DIR = os.path.join(ASSETS_DIR, "logos")
 AUDIO_EXTS = (".wav", ".mp3", ".ogg", ".m4a", ".flac", ".opus")
 VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
 ANCHORED = ("reaction", "arrow", "circle")
+REACTION_EXTS = VIDEO_EXTS + (".gif", ".jpg", ".jpeg", ".png", ".webp")
 
 REACTION_STYLES = (("cutaway", "Full screen (cut-away)"), ("corner", "Small box in a corner"))
 CORNER_SPOTS = (("top-left", "Top left"), ("top-right", "Top right"), ("middle-left", "Middle left"))
@@ -92,7 +93,7 @@ def reaction_library(reactions_dir: str = REACTIONS_DIR) -> dict[str, list[str]]
     out = {}
     if os.path.isdir(reactions_dir):
         for name in sorted(os.listdir(reactions_dir)):
-            files = _list_files(os.path.join(reactions_dir, name), VIDEO_EXTS)
+            files = _list_files(os.path.join(reactions_dir, name), REACTION_EXTS)
             if files:
                 out[name] = files
     return out

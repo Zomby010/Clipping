@@ -1,0 +1,117 @@
+<title>Clip Editor Phase 4 Tests</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap">
+<style>
+/* Layout: one column checklist, sticky tally on top, grouped by phase. Same look as the phase test pages. */
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#5d6779;--line:#dde1e8;--accent:#c2410c;--pass:#18794e;--fail:#c0262d;--on:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 Inter,system-ui,sans-serif;padding-block:0 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:760px;margin:0 auto}
+h1,h2{font-family:"Space Grotesk",Inter,sans-serif;text-wrap:balance}
+h1{font-size:28px;margin:24px 0 4px}
+h2{font-size:18px;margin:28px 0 4px}
+p{margin:4px 0 8px;color:var(--muted)}
+code{overflow-wrap:anywhere;color:var(--fg);font-size:13px}
+#bar{position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;z-index:2;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:4px 16px}
+#save{color:var(--muted)}#save.err{color:var(--fail)}
+.t{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 8px}
+.t b{color:var(--accent);font-variant-numeric:tabular-nums}
+.exp{color:var(--muted)}
+.ctl{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+button{font:600 13px Inter,sans-serif;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:6px 14px;cursor:pointer}
+button.p[aria-pressed="true"]{background:var(--pass);border-color:var(--pass);color:var(--on)}
+button.f[aria-pressed="true"]{background:var(--fail);border-color:var(--fail);color:var(--on)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input{flex:1 1 200px;min-width:0;font:inherit;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button:disabled,input:disabled{opacity:.5;cursor:default}
+</style>
+<main>
+<h1>Clip Editor: phase 4 tests</h1>
+<p>Phase 4 first (music, sound effects, reactions, logo, layout), then retests and the tests from earlier phases you have not run. Numbers are phase.test. Mark each Pass or Fail and note what you saw.</p>
+<p>Close and reopen Clip Editor before you start. Test video: <code>outputs/video_asli.mp4</code></p>
+<div id="bar"><span id="tally"></span><span id="save" role="status">Loading your saved marks…</span></div>
+<div id="list"></div>
+</main>
+<script>
+// Ids are the saved keys: never renumber an existing one.
+const GROUPS=[
+["Phase 4: music (Music and SFX tab)","Press New, add the test video, add 1:02-1:10 and 2:38-2:49, then watch My cut.",[["4.1","Choose each Mood, pick a track, press Play, then Stop","Each mood lists tracks, and you hear the track until you press Stop"],["4.2","Pick a track, press Use this track and play your cut","Music plays under the whole cut and shows in the Music lane"],["4.3","Move Music volume low, then high","The music gets quieter, then louder"],["4.4","Set Start the track at to 20, Fade in to 3 and Fade out to 3","The track starts from a different spot, fades in at the beginning and out at the end"],["4.5","With speech or a made voice-over in the cut, set Dip under voices to Strong, Light, then Off","Music drops a lot, a little, then not at all while someone talks"],["4.6","Write a Licence note, press Enter, then open the Export tab","The note is saved with the track and appears in the YouTube description"],["4.7","Press Add your own and choose a music file, then press No music and Undo","Your track is listed, the music goes, and Undo brings it back"]]],
+["Phase 4: sound effects and loudness","Same edit.",[["4.8","Choose several sound effects and press Play on each","Each one sounds different"],["4.9","Pause My cut at a spot, set Sound effect volume, press Add here and replay","The effect plays at that spot and shows in the SFX lane"],["4.10","Pick it in the list, press −0.1 s and +0.1 s, then Delete and Undo","It moves, goes and comes back"],["4.11","Move the moment that holds a sound effect up or down","The effect moves with its moment"],["4.12","Export once with Even out the loudness ticked and once unticked","Both play; the ticked one is at a normal, comfortable level"]]],
+["Phase 4: reactions, arrows and circles (Reactions tab)","Same edit. These are the ones that play over your video. Pick a mood, then click a thumbnail.",[["4.13","Watch My cut, stop at a spot, pick a laughing GIF or video, choose Over my video, full screen, press Add reaction here and replay","The reaction fills the screen, then your video comes back without freezing"],["4.14","Add one as Over my video, small box; try each Corner, with and without White edge","The box appears where you chose, with or without the edge"],["4.15","Change Stays for and Volume of its own sound, then add another","It stays that long and is as loud as you set"],["4.16","Press Add your own and choose a short video, GIF or picture","It is listed under that mood and can be added"],["4.17","Add an Arrow, then a Circle, trying direction, colour, place, seconds and Size","Each looks as chosen, where and when you put it"],["4.18","Under In this edit, pick an arrow or an over-the-video reaction, move it ±0.1 s, then Delete and Undo","It moves, goes and comes back"],["4.19","With a script that Claude wrote, press Use Claude's cues","Reactions or sound effects are added, or a message says there are no matching cues"]]],
+["New: reactions inside your cut","Same edit. Watch My cut and wait for the preview before adding or moving.",[["4.23","Stop in the middle of a moment, pick a reaction, keep In between (adds time) and press Add reaction here","The moment splits, the reaction plays in between, your video resumes where it stopped, and the length grows by the reaction's seconds"],["4.24","Add a picture, a GIF and a video reaction at three different spots","All three play in the right places; the video one keeps its sound"],["4.25","Pick one under In this edit, press Longer, Shorter, then stop elsewhere and press Move to player spot","Its length and place change, and the total length follows"],["4.26","Delete it, then press Undo","The video is shorter and the split halves join; Undo brings the reaction back"],["4.27","With captions or voice lines after the spot, insert a reaction","Captions and voices still match their own words and moments"],["4.28","Press Favourite on a few, open Favourites, close and reopen the app","Your favourites are still listed"],["4.29","Export an edit with inserted reactions","The exported video has them and is as long as the editor says"]]],
+["New: layout","Maximise the window.",[["4.30","Open every tab and scroll each to the bottom","The timeline stays on screen and no button or text is cut off sideways"],["4.31","Press section titles to fold and unfold them","Each section closes and opens"],["4.32","Drag the dividers between the three columns, then reopen the app","Widths change and are remembered"]]],
+["Retest: other fixes from your notes","Close and reopen the app first.",[["R19","Reopen your New story edit and read the script lines (3.13)","No line starts with {'text'; press Make voices to hear the cleaned words"],["R20","On Voice, tick Replace it completely and play My cut (3.12)","The original sound is silent; voice-over, music and effects are heard"],["R21","Pick a script line, edit it in the box, then press Open in a big window (3.6)","The whole line and the whole script can be read"],["R22","On Export, press Use my own picture…, then Back to a frame (R14)","Your picture becomes the cover, then the frame returns"],["R23","Set the hook to 10 seconds, then press Whole video (R11)","The hook stays on that long"]]],
+["Phase 4: channel logo and export","Same edit.",[["4.20","Press Choose logo, then change Where, Size and Solid ↔ see-through","The logo shows in My cut and follows each setting"],["4.21","Press New with the same channel, then switch channel","The same channel gets its logo again; a channel without one has none"],["4.22","Export an edit with music, a sound effect, a reaction, an arrow and the logo","The exported video has all of them, timed and placed like My cut"]]],
+["Retest: phase 3 voice items","From your 28 November marks. All are now fixed; close and reopen the app first.",[["R18","Move Voice-over volume to about 40 %, play your cut, then try about 200 %. Then move Speed and press Apply speed, move Pitch and press Apply pitch, and Undo","The voice clearly gets quieter and louder; speed and pitch each apply on their own and can be undone"],["3.4","In New story add a character, press it in the list, then press Remove","The character goes from the list"],["3.14","Check the microphone in the computer's Sound settings, press Record with mic, read a line, press Stop recording, then play My cut","Your own voice is heard"],["3.16","With a script, in any mode, press Make captions and choose the script","The choice appears and captions match the narrator's words"],["3.17","In a new edit with a video, press Ask Claude (top bar) and follow each step","It watches, then helps with angle, script and voices in order"]]],
+["Phase 1: saving and export","Not run yet. Use the Phase 1 test edit.",[
+["1.28","Close the app and reopen it","Your edit comes back as you left it"],
+["1.29","Change the name and channel, press New, then Open… the test edit's project.json in My Edits","Everything is restored"],
+["1.30","Start Export, then press Stop (a checks warning may appear first)","It stops and the window stays usable"],
+["1.31","Export again and let it finish","A 1080×1920 video with sound in Clipping/Ready to post, matching the preview"],
+["1.32","On the Export tab, use Open Ready to post and Change…","The folder opens, and you can pick another"]]],
+["Phase 2: export","Not run yet.",[
+["2.27","Add text on the cover, a title, description and hashtags, then press Export straight away","YouTube.txt has exactly what you typed, and cover.jpg shows your frame and cover text"],
+["2.28","Watch the exported video","Captions, hook and pop-ups look and are timed like the preview"],
+["2.29","Open the export folder","It has the video, cover.jpg, captions.srt and YouTube.txt"]]],
+["Phase 1: retests after fixes","The fix log lists these as fixed or to be tried again. No retest is recorded.",[
+["1.2","Use Add video… to add a second video, then click between the two","Both stay listed and the player switches to the one you clicked"],
+["1.3","Add a moment from the second video, play it, then Remove video","Playback stops at the moment's end; removing asks first, then removes the video and its moments"],
+["1.5","Click outside any text box, press Space, ← and →, then drag the slider","Space plays and pauses, arrows jump 1 second, scrubbing works"],
+["1.7","While playing, press I, wait, press O. Then Remove that video","The moment is added, and the player empties on removal"],
+["1.18","Click each moment in the cut list","Start and end times are readable in full"],
+["1.19","Type a moment that ends past the video's length and press Add","It is refused, with the video's length shown"],
+["1.21","On a wide video, switch to My cut (9:16) and choose Follow the people","Crop centres on faces, or on the middle if none are found"],
+["1.22","Choose Crop, I choose the position, and move Left ↔ right","The visible area moves"],
+["1.23","Choose Whole picture, blurred behind","The full picture shows over a blurred background"],
+["1.24","Use Zoom in, then Up ↕ down in crop mode","Picture enlarges and can move vertically"],
+["1.26","Press Use for every moment","All moments get the same framing"],
+["1.F1","Open… a video, then a text file, then a real project.json","The video starts a new edit, the text file says it isn't a saved edit, the project opens"]]]
+];
+
+const list=document.getElementById('list'),save=document.getElementById('save'),tally=document.getElementById('tally');
+const rows={},state={},queue={};
+let db=null;
+const say=(t,err)=>{save.textContent=t;save.className=err?'err':''};
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e};
+for(const [name,about,tests] of GROUPS){
+  list.append(el('h2','',name),el('p','',about));
+  for(const [num,act,exp] of tests){
+    const id='p'+num.replace('.','-');
+    state[id]={status:'',note:''};
+    const box=el('div','t'),body=el('div'),ctl=el('div','ctl');
+    body.append(el('div','',act),el('div','exp','Pass if: '+exp));
+    const p=el('button','p','Pass'),f=el('button','f','Fail'),note=el('input');
+    note.id='note-'+id;note.placeholder='What did you see?';note.setAttribute('aria-label','Note for test '+num);
+    for(const [b,v] of [[p,'pass'],[f,'fail']]){b.type='button';b.disabled=true;b.onclick=()=>{state[id].status=state[id].status===v?'':v;paint(id);write(id)}}
+    note.disabled=true;note.onchange=()=>{state[id].note=note.value;write(id)};
+    ctl.append(p,f,note);box.append(el('b','',num),body,ctl);list.append(box);
+    rows[id]={p,f,note};
+  }
+}
+function paint(id){
+  const r=rows[id],s=state[id];
+  r.p.setAttribute('aria-pressed',s.status==='pass');r.f.setAttribute('aria-pressed',s.status==='fail');
+  if(document.activeElement!==r.note)r.note.value=s.note;
+  const all=Object.values(state),pass=all.filter(x=>x.status==='pass').length,fail=all.filter(x=>x.status==='fail').length;
+  tally.textContent=`${pass} passed · ${fail} failed · ${all.length-pass-fail} to do`;
+}
+function write(id){
+  say('Saving…');
+  const data={status:state[id].status,note:state[id].note,at:Date.now()};
+  queue[id]=(queue[id]||Promise.resolve()).then(()=>db.collection('results').doc(id).set(data))
+    .then(()=>say('Saved'),e=>say('Not saved ('+((e&&e.code)||'unknown')+'). Mark it again, or tell Claude in the terminal.',true));
+}
+Object.keys(rows).forEach(paint);
+(async()=>{
+  const timer=setTimeout(()=>say('Saved marks did not load. Open this page signed in to claude.ai.',true),10000);
+  try{db=await claude.use('db')}catch(e){}
+  if(!db){clearTimeout(timer);say('Marks cannot be saved in this view. Open this page signed in to claude.ai.',true);return}
+  db.collection('results').onSnapshot(snap=>{
+    clearTimeout(timer);
+    snap.docs.forEach(d=>{if(state[d.id]){const v=d.data();state[d.id]={status:v.status||'',note:v.note||''};paint(d.id)}});
+    Object.values(rows).forEach(r=>r.p.disabled=r.f.disabled=r.note.disabled=false);
+    say('Saved');
+  },e=>{clearTimeout(timer);say('Could not load your marks ('+((e&&e.code)||'unknown')+').',true)});
+})();
+</script>

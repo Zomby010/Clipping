@@ -28,6 +28,10 @@ NAMED_SPOTS = {"top": (0, 1), "middle": (1, 1)}
 
 COMMON_EMOJI = ("😂", "💀", "😳", "🔥", "😭", "👀", "🤯", "💯", "❤️", "🙏",
                 "😱", "🤣", "😎", "🥶", "😡", "👏", "🚀", "⚽", "🎮", "✨")
+# Shown in the menu when there is no colour emoji font to draw them with.
+EMOJI_NAMES = dict(zip(COMMON_EMOJI, (
+    "laughing", "skull", "shocked", "fire", "crying", "eyes", "mind blown", "100", "heart", "please",
+    "scream", "rolling", "cool", "cold", "angry", "clap", "rocket", "football", "game", "sparkles")))
 
 
 @dataclass
@@ -37,6 +41,7 @@ class EmojiMark:
     y: int
     start: float
     end: float
+    anim: str = ""   # how it arrives (the hook's emoji move like its words)
 
 
 @dataclass
@@ -52,6 +57,13 @@ class TextLayers:
 
 
 # ---------------------------------------------------------------- helpers
+HOOK_SECONDS = (1.0, 600.0)   # shortest and longest the hook line can stay up
+
+
+def hook_seconds(hook: dict) -> float:
+    return min(HOOK_SECONDS[1], max(HOOK_SECONDS[0], float(hook.get("seconds", 2.0))))
+
+
 def split_emoji(text: str) -> tuple[str, str]:
     """('BRO WHAT', '💀') from 'BRO WHAT 💀'."""
     emoji = "".join(EMOJI_RE.findall(text or ""))
@@ -96,6 +108,31 @@ def _style_line(name: str, st: S.CaptionStyle, w: int, h: int) -> str:
             f"{round(st.shadow * k, 2)},{align},{ml},{mr},{mv},1")
 
 
+BOX_COLOUR = "E8590C"   # orange, unless another colour was picked
+
+
+def box_colour(hook: dict) -> str:
+    """The hook box colour as RRGGBB."""
+    value = str(hook.get("box_color") or "").lstrip("#")
+    return value.upper() if re.fullmatch(r"[0-9a-fA-F]{6}", value) else BOX_COLOUR
+
+
+def box_text_colour(rrggbb: str) -> str:
+    """White words, or black ones on a light box."""
+    r, g, b = (int(rrggbb[i:i + 2], 16) for i in (0, 2, 4))
+    return "000000" if 0.299 * r + 0.587 * g + 0.114 * b > 160 else "FFFFFF"
+
+
+def _box_style_line(w: int, h: int, colour: str = BOX_COLOUR) -> str:
+    """The hook on a solid box (BorderStyle 3 fills the box with the outline colour)."""
+    parts = _style_line("HookBox", S.HOOK_STYLE, w, h).split(",")
+    box = ass_colour(colour)
+    parts[3] = parts[4] = ass_colour(box_text_colour(colour))
+    parts[5] = parts[6] = box                     # outline and shadow colour
+    parts[15], parts[16], parts[17] = "3", str(round(14 * h / 1920, 2)), "0"
+    return ",".join(parts)
+
+
 def _case(text: str, st: S.CaptionStyle) -> str:
     return text.upper() if st.all_caps else text
 
@@ -127,6 +164,51 @@ def caption_events(project, st: S.CaptionStyle) -> list[str]:
     return events
 
 
+# How the hook arrives. "pop" is the original look.
+HOOK_ANIMATIONS = (("pop", "Pop"), ("bounce", "Bounce"), ("slide", "Slide down"), ("shake", "Shake"))
+
+
+def hook_effect(anim: str, w: int, h: int) -> str:
+    """The .ass tags that bring the hook in."""
+    if anim == "bounce":
+        return ("\\fscx40\\fscy40\\t(0,140,\\fscx118\\fscy118)\\t(140,240,\\fscx92\\fscy92)"
+                "\\t(240,330,\\fscx100\\fscy100)")
+    if anim == "slide":
+        x, y = w // 2, int(0.12 * h)
+        return f"\\an8\\move({x},{-int(0.1 * h)},{x},{y},0,260)"
+    if anim == "shake":
+        steps = "".join(f"\\t({t},{t + 60},\\frz{a})" for t, a in
+                        zip(range(0, 420, 60), (5, -5, 4, -4, 2, -2, 0)))
+        return steps
+    return "\\fscx70\\fscy70\\t(0,160,\\fscx100\\fscy100)"
+
+
+def emoji_motion(anim: str, x: int, y: int) -> tuple[str, str]:
+    """ffmpeg overlay x / y expressions that bring a hook emoji in like the words."""
+    if anim == "slide":
+        return str(x), f"if(lt(t,0.26),-h+({y}+h)*t/0.26,{y})"
+    if anim == "bounce":
+        return str(x), f"{y}-if(lt(t,0.6),abs(sin(t*PI/0.2))*H*0.05*(1-t/0.6),0)"
+    if anim == "shake":
+        return f"{x}+if(lt(t,0.6),sin(t*45)*W*0.05*(1-t/0.6),0)", str(y)
+    if anim == "pop":
+        return str(x), f"{y}+if(lt(t,0.16),H*0.03*(1-t/0.16),0)"
+    return str(x), str(y)
+
+
+def put_on_box(png: str, colour: str) -> None:
+    """Redraw an emoji picture on a rounded box of ``colour``."""
+    from PIL import Image, ImageDraw
+    with Image.open(png) as im:
+        emoji = im.convert("RGBA")
+    pad = max(4, emoji.height // 6)
+    box = Image.new("RGBA", (emoji.width + 2 * pad, emoji.height + 2 * pad), (0, 0, 0, 0))
+    rgb = tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4))
+    ImageDraw.Draw(box).rounded_rectangle((0, 0, box.width - 1, box.height - 1), radius=pad, fill=rgb + (255,))
+    box.alpha_composite(emoji, (pad, pad))
+    box.save(png)
+
+
 def spot(position) -> tuple[float, float]:
     """Pop-up position -> (x, y) fractions of the frame."""
     if isinstance(position, str) and position in NAMED_SPOTS:
@@ -152,10 +234,11 @@ def build_ass(project, w: int, h: int) -> str | None:
     hook_text = split_emoji(hook.get("text", ""))[0]
     events = caption_events(project, st)
     if hook_text:
-        secs = min(4.0, max(1.0, float(hook.get("seconds", 2.0))))
+        secs = hook_seconds(hook)
+        look = "HookBox" if hook.get("box") else "Hook"
         events.append(
-            f"Dialogue: 1,{ass_time(0)},{ass_time(secs)},Hook,,0,0,0,,"
-            f"{{\\fscx70\\fscy70\\t(0,160,\\fscx100\\fscy100)}}{ass_text(_case(hook_text, S.HOOK_STYLE))}")
+            f"Dialogue: 1,{ass_time(0)},{ass_time(secs)},{look},,0,0,0,,"
+            f"{{{hook_effect(hook.get('anim', 'pop'), w, h)}}}{ass_text(_case(hook_text, S.HOOK_STYLE))}")
     for o in popups(project):
         text = split_emoji(o.get("text", ""))[0]
         if not text:
@@ -178,6 +261,7 @@ def build_ass(project, w: int, h: int) -> str | None:
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"{_style_line('Caption', st, w, h)}\n"
         f"{_style_line('Hook', S.HOOK_STYLE, w, h)}\n"
+        f"{_box_style_line(w, h, box_colour(hook))}\n"
         f"{_style_line('Popup', S.POPUP_STYLE, w, h)}\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -208,17 +292,19 @@ def render_emoji_png(emoji: str, height: int, out_png: str, font_path: str) -> s
 
 
 def emoji_marks(project, w: int, h: int, workdir: str, font_path: str | None) -> tuple[list[EmojiMark], list[str]]:
-    wanted = []   # (emoji, centre x, centre y, size, start, end)
+    wanted = []   # (emoji, centre x, centre y, size, start, end, movement, box colour)
     hook = project.hook or {}
     hook_plain, hook_emoji = split_emoji(hook.get("text", ""))
     if hook_emoji:
-        secs = min(4.0, max(1.0, float(hook.get("seconds", 2.0))))
+        secs = hook_seconds(hook)
         size = int(S.HOOK_STYLE.size * h / 1920)
         # Below the hook text: estimate how many lines it wraps to.
         chars_per_line = max(6, int((0.84 * w) / (0.52 * size)))
         lines = max(1, -(-len(hook_plain) // chars_per_line)) if hook_plain else 0
         cy = int(0.12 * h + lines * size * 1.15 + size * 0.7)
-        wanted.append((hook_emoji, w // 2, cy, int(size * 1.1), 0.0, secs))
+        # Emoji on their own get the box; with words, the words already have it.
+        boxed = box_colour(hook) if hook.get("box") and not hook_plain else ""
+        wanted.append((hook_emoji, w // 2, cy, int(size * 1.1), 0.0, secs, hook.get("anim", "pop"), boxed))
     for o in popups(project):
         plain, emoji = split_emoji(o.get("text", ""))
         if not emoji:
@@ -226,20 +312,22 @@ def emoji_marks(project, w: int, h: int, workdir: str, font_path: str | None) ->
         fx, fy = spot(o.get("position", "middle"))
         size = int(S.POPUP_STYLE.size * h / 1920)
         cy = int(fy * h - (size * 1.2 if plain else 0))
-        wanted.append((emoji, int(fx * w), cy, int(size * 1.15), float(o["start"]), float(o["end"])))
+        wanted.append((emoji, int(fx * w), cy, int(size * 1.15), float(o["start"]), float(o["end"]), "", ""))
     if not wanted:
         return [], []
     if not font_path:
         return [], [S.EMOJI_HELP]
     marks = []
-    for n, (emoji, cx, cy, size, start, end) in enumerate(wanted):
+    for n, (emoji, cx, cy, size, start, end, anim, boxed) in enumerate(wanted):
         png = render_emoji_png(emoji, size, os.path.join(workdir, f"emoji{n}.png"), font_path)
         if not png:
             continue
+        if boxed:
+            put_on_box(png, boxed)
         from PIL import Image
         with Image.open(png) as im:
             pw, ph = im.size
-        marks.append(EmojiMark(png, int(cx - pw / 2), int(cy - ph / 2), round(start, 3), round(end, 3)))
+        marks.append(EmojiMark(png, int(cx - pw / 2), int(cy - ph / 2), round(start, 3), round(end, 3), anim))
     return marks, []
 
 

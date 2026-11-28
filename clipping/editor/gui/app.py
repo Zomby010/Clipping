@@ -31,15 +31,18 @@ import traceback
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import font as tkfont
 
 from clipping.editor import captions as C
 from clipping.editor import overlays as O
 from clipping.editor import framing, media, platforms, preview, render, timeline
+from clipping.editor import importer
 from clipping.editor import project as P
 from clipping.editor import script as S_script  # phase 3
 from clipping.editor.gui.story_panels import StoryPanelsMixin  # phase 3
 from clipping.editor.gui.platform_panels import PlatformPanelsMixin
 from clipping.editor.gui.review_panels import ReviewPanelsMixin
+from clipping.editor.gui.reaction_panels import ReactionPanelsMixin
 from clipping.editor.gui.sound_panels import SoundPanelsMixin
 from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
 
@@ -62,11 +65,14 @@ COLORS = {
     "seg": "#fde3d3",
     "seg_line": "#e8590c",
     "seg_sel": "#e8590c",
+    "react": "#e5dbff",
+    "react_line": "#7048e8",
 }
 
 LATER_TABS = ()   # every phase is built now
 
-LANES = ("Video", "Voice-over", "Music", "SFX", "Reactions", "Captions")
+LANES = ("Original video", "Moments", "Voice-over", "Music", "SFX", "Reactions", "Captions")
+LANE_LABEL_W, LANE_H, LANE_TOP = 112, 14, 3
 
 
 def load_settings() -> dict:
@@ -87,7 +93,23 @@ def save_settings(data: dict):
         pass
 
 
-class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin):
+def ui_font(root) -> tuple[str, int]:
+    """A proportional font that is really there. Some Python builds give Tk only
+    the old X11 fonts; asking those for "Ubuntu" silently returns a wide
+    typewriter font, which made every panel look crammed."""
+    if not sys.platform.startswith("linux"):
+        return ("Segoe UI", 10)
+    have = {f.lower(): f for f in tkfont.families(root)}
+    if "ubuntu" in have:
+        return ("Ubuntu", 11)
+    family = next((have[n] for n in ("dejavu sans", "noto sans", "nimbus sans l", "helvetica") if n in have),
+                  "helvetica")
+    for name in ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkMenuFont"):
+        tkfont.nametofont(name, root=root).configure(family=family, size=10)
+    return (family, 10)
+
+
+class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin):
     APP_NAME = APP_NAME
 
     def __init__(self, root: tk.Tk):
@@ -113,7 +135,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         root.title(APP_NAME)
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         root.geometry(f"{min(1360, sw - 20)}x{min(860, sh - 70)}+0+0")
-        root.minsize(1060, 620)
+        root.minsize(1060, 680)
         if sw <= 1440 or sh <= 820:  # typical laptop screen: use all of it
             try:
                 root.attributes("-zoomed", True)
@@ -142,7 +164,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             st.theme_use("clam")
         except tk.TclError:
             pass
-        base = ("Ubuntu", 11) if sys.platform.startswith("linux") else ("Segoe UI", 10)
+        base = ui_font(self.root)
         self.base_font = base
         st.configure(".", background=COLORS["bg"], foreground=COLORS["text"], font=base)
         st.configure("Page.TFrame", background=COLORS["bg"])
@@ -163,12 +185,14 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         st.map("Accent.TButton", background=[("disabled", "#f3b48f"), ("active", COLORS["accent_dark"])])
         st.configure("TButton", padding=(10, 4))
         st.configure("Small.TButton", padding=(6, 2))
+        st.configure("TPanedwindow", background=COLORS["bg"])
+        st.configure("Sash", sashthickness=8, gripcount=0)
         st.configure("TNotebook", background=COLORS["bg"], borderwidth=0)
         st.configure("TNotebook.Tab", padding=(8, 4))
         st.map("TNotebook.Tab", background=[("selected", COLORS["card"])])
         st.configure("Horizontal.TProgressbar", troughcolor="#e8eaee", background=COLORS["accent"])
         st.configure("Treeview", rowheight=24)
-        st.configure("Rail.Toolbutton", padding=(10, 7), anchor="w", background="#e9ecf1")
+        st.configure("Rail.Toolbutton", padding=(8, 7), anchor="w", background="#e9ecf1")
         st.map("Rail.Toolbutton", background=[("selected", COLORS["card"]), ("active", "#dde2e9")],
                foreground=[("selected", COLORS["accent_dark"])])
 
@@ -195,29 +219,52 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
                   style="Help.TLabel").pack(side="left")
         bottom = ttk.LabelFrame(outer, labelwidget=head, style="Card.TLabelframe", padding=6)
         bottom.pack(side="bottom", fill="x", pady=(8, 0))
-        self.timeline = tk.Canvas(bottom, height=100, background=COLORS["card"], highlightthickness=0)
+        self.timeline = tk.Canvas(bottom, height=LANE_TOP + len(LANES) * (LANE_H + 2) + 2, background=COLORS["card"], highlightthickness=0)
         self.timeline.pack(fill="x")
         self.timeline.bind("<Configure>", lambda e: self.draw_timeline())
         self.timeline.bind("<Button-1>", self._timeline_click)
 
-        body = ttk.Frame(outer, style="Page.TFrame")
+        body = ttk.PanedWindow(outer, orient="horizontal")
         body.pack(fill="both", expand=True, pady=(8, 0))
-        body.columnconfigure(1, weight=1, minsize=420)
-        body.columnconfigure(2, minsize=430)
-        body.rowconfigure(0, weight=1)
+        self.body = body
 
         left = ttk.LabelFrame(body, text="Cut list", style="Card.TLabelframe", padding=8)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         self._build_cut_list(left)
-
         centre = ttk.Frame(body, style="Card.TFrame", padding=8)
-        centre.grid(row=0, column=1, sticky="nsew")
         self._build_player(centre)
-
         right = ttk.Frame(body, style="Page.TFrame")
-        right.grid(row=0, column=2, sticky="nsew", padx=(8, 0))
         self._build_tabs(right)
+        for pane, weight in ((left, 0), (centre, 1), (right, 1)):
+            body.add(pane, weight=weight)
+        body.bind("<ButtonRelease-1>", lambda e: self._remember_columns())
+        self._columns_set = 0
+        body.bind("<Configure>", lambda e: self._place_columns(e.width))
 
+    def _place_columns(self, width: int):
+        """When the window's width changes: your own column widths if you dragged them,
+        else a roomy tool panel (the player is a tall picture and needs little width)."""
+        if width == self._columns_set or width < 900:
+            return
+        self._columns_set = width
+        saved = self.settings.get("columns")
+        first = int(width * saved[0]) if saved else int(min(370, max(290, width * 0.26)))
+        second = int(width * saved[1]) if saved else width - int(min(580, max(470, width * 0.40)))
+        second = max(first + 260, min(width - 440, second))
+        first = min(first, second - 260)
+
+        def place():
+            self.body.sashpos(0, first)
+            self.body.sashpos(1, second)
+
+        self.root.after_idle(place)
+
+    def _remember_columns(self):
+        width = self.body.winfo_width()
+        if width > 900:
+            now = [round(self.body.sashpos(0) / width, 3), round(self.body.sashpos(1) / width, 3)]
+            if now != self.settings.get("columns"):
+                self.settings["columns"] = now
+                save_settings(self.settings)
 
     def _build_top(self, parent):
         top = ttk.Frame(parent, style="Page.TFrame")
@@ -239,12 +286,12 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         self.export_btn.pack(side="right")
         self.claude_btn = ttk.Button(top, text="Ask Claude", command=self.ask_claude)
         self.claude_btn.pack(side="right", padx=8)
-        self.redo_btn = ttk.Button(top, text="Redo", width=6, command=self.redo)
+        self.redo_btn = ttk.Button(top, text="Redo", width=0, command=self.redo)
         self.redo_btn.pack(side="right")
-        self.undo_btn = ttk.Button(top, text="Undo", width=6, command=self.undo)
+        self.undo_btn = ttk.Button(top, text="Undo", width=0, command=self.undo)
         self.undo_btn.pack(side="right", padx=(0, 4))
-        ttk.Button(top, text="Open…", width=7, command=self.open_dialog).pack(side="right", padx=(0, 12))
-        ttk.Button(top, text="New", width=5, command=self.new_project).pack(side="right", padx=(0, 4))
+        ttk.Button(top, text="Open…", width=0, command=self.open_dialog).pack(side="right", padx=(0, 12))
+        ttk.Button(top, text="New", width=0, command=self.new_project).pack(side="right", padx=(0, 4))
         ttk.Button(top, text="My Clips…", command=self.open_my_clips_dialog).pack(side="right", padx=(0, 4))
 
     def _build_cut_list(self, parent):
@@ -270,13 +317,13 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         entry.pack(side="left", fill="x", expand=True)
         entry.bind("<Return>", lambda e: self.add_typed_ranges())
         ttk.Button(type_row, text="Add", command=self.add_typed_ranges).pack(side="left", padx=(4, 0))
-        ttk.Label(parent, text="Like 1:02-1:10, 2:38-2:49, 4:06-4:55 (1.02 also means 1 min 2 s)",
-                  style="Help.TLabel", wraplength=330, justify="left").pack(anchor="w", pady=(2, 8))
+        ttk.Label(parent, text="Like 1:02-1:10, 2:38-2:49", style="Help.TLabel").pack(anchor="w", pady=(2, 8))
 
-        cols = ("n", "video", "from", "to", "len", "speed")
-        self.tree = ttk.Treeview(parent, columns=cols, show="headings", height=6, selectmode="browse")
-        for col, text, width in (("n", "#", 28), ("video", "Video", 78), ("from", "From", 58),
-                                 ("to", "To", 58), ("len", "Length", 56), ("speed", "Speed", 52)):
+        cols = ("n", "from", "to", "len", "speed", "video")
+        self.tree = ttk.Treeview(parent, columns=cols, show="headings", height=4, selectmode="browse")
+        time_w = tkfont.Font(font=self.base_font).measure("00:00.0") + 14   # whole times, never cut off
+        for col, text, width in (("n", "#", 28), ("from", "From", time_w), ("to", "To", time_w),
+                                 ("len", "Length", time_w), ("speed", "Speed", 52), ("video", "Video", 60)):
             self.tree.heading(col, text=text)
             self.tree.column(col, width=width, anchor="w" if col == "video" else "center", stretch=col == "video")
         self.tree.pack(fill="both", expand=True)
@@ -290,10 +337,12 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         row2 = ttk.Frame(parent, style="Card.TFrame")
         row2.pack(side="bottom", fill="x", pady=(2, 4), before=self.tree)
         row1.pack(side="bottom", fill="x", pady=(6, 2), before=self.tree)
-        ttk.Button(row1, text="Up", width=4, style="Small.TButton", command=lambda: self.move_selected(-1)).pack(side="left")
-        ttk.Button(row1, text="Down", width=5, style="Small.TButton", command=lambda: self.move_selected(1)).pack(side="left", padx=2)
-        ttk.Button(row1, text="Split here", width=9, style="Small.TButton", command=self.split_selected).pack(side="left", padx=2)
-        ttk.Button(row1, text="Delete", width=6, style="Small.TButton", command=self.delete_selected).pack(side="left", padx=2)
+        self.detail_var = tk.StringVar()
+        ttk.Label(parent, textvariable=self.detail_var, style="Help.TLabel", wraplength=340,
+                  justify="left").pack(side="bottom", anchor="w", pady=(4, 0), before=self.tree)
+        for text, command in (("Move up", lambda: self.move_selected(-1)), ("Move down", lambda: self.move_selected(1)),
+                              ("Split here", self.split_selected), ("Delete", self.delete_selected)):
+            ttk.Button(row1, text=text, width=0, style="Small.TButton", command=command).pack(side="left", padx=(0, 3))
         ttk.Label(row2, text="Start", style="Card.TLabel").pack(side="left")
         ttk.Button(row2, text="−0.1", width=5, style="Small.TButton", command=lambda: self.nudge("in", -0.1)).pack(side="left", padx=2)
         ttk.Button(row2, text="+0.1", width=5, style="Small.TButton", command=lambda: self.nudge("in", 0.1)).pack(side="left")
@@ -306,11 +355,18 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         top = ttk.Frame(parent, style="Card.TFrame")
         top.pack(fill="x")
         ttk.Label(top, text="Watch:", style="Card.TLabel").pack(side="left")
-        ttk.Radiobutton(top, text="The video I'm cutting from", value="source", variable=self.watch,
+        ttk.Radiobutton(top, text="Original video", value="source", variable=self.watch,
                         style="Card.TRadiobutton", command=self._watch_changed).pack(side="left", padx=6)
         ttk.Radiobutton(top, text="My cut (9:16)", value="cut", variable=self.watch,
                         style="Card.TRadiobutton", command=self._watch_changed).pack(side="left")
         self.safe_var = tk.BooleanVar(value=True)
+        self.one_moment = tk.BooleanVar(value=True)
+        second = ttk.Frame(parent, style="Card.TFrame")
+        second.pack(fill="x")
+        self.showing_var = tk.StringVar()
+        ttk.Label(second, textvariable=self.showing_var, style="Total.TLabel").pack(side="left")
+        ttk.Checkbutton(second, text="Stop after each moment", variable=self.one_moment,
+                        style="Card.TCheckbutton").pack(side="right")
 
         holder = tk.Frame(parent, background=COLORS["player"])
         holder.pack(fill="both", expand=True, pady=6)
@@ -333,20 +389,21 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
 
         marks = ttk.Frame(parent, style="Card.TFrame")
         marks.pack(fill="x", pady=(6, 0))
-        ttk.Button(marks, text="Mark start (I)", command=self.mark_start).pack(side="left")
-        ttk.Button(marks, text="Mark end (O)", command=self.mark_end).pack(side="left", padx=4)
-        ttk.Button(marks, text="Add moment", command=self.add_marked).pack(side="left")
+        for text, command in (("Mark start (I)", self.mark_start), ("Mark end (O)", self.mark_end),
+                              ("Add moment", self.add_marked)):
+            ttk.Button(marks, text=text, width=0, style="Small.TButton", command=command).pack(side="left", padx=(0, 4))
         self.marks_var = tk.StringVar(value="Start: –   End: –")
+        ttk.Label(parent, textvariable=self.marks_var, style="Help.TLabel").pack(anchor="w", pady=(2, 0))
         info = ttk.Frame(parent, style="Card.TFrame")
-        info.pack(fill="x", pady=(4, 0))
-        ttk.Label(info, textvariable=self.marks_var, style="Card.TLabel").pack(side="left")
+        info.pack(fill="x")
         self.zone_var = tk.StringVar(value=platforms.ZONE_CHOICES[0][0])
         zones = ttk.Combobox(info, textvariable=self.zone_var, width=9, state="readonly",
                              values=[name for name, _ in platforms.ZONE_CHOICES])
         zones.pack(side="right", padx=(4, 0))
+        ttk.Label(info, text="for", style="Card.TLabel").pack(side="right")
         zones.bind("<<ComboboxSelected>>", lambda e: self._zones_changed())
         ttk.Checkbutton(info, text="Shade button areas", variable=self.safe_var,
-                        style="Card.TCheckbutton", command=self._overlay_changed).pack(side="right")
+                        style="Card.TCheckbutton", command=self._overlay_changed).pack(side="left")
         if self.player.name != "mpv":
             ttk.Label(parent, style="Help.TLabel", wraplength=600, justify="left",
                       text="Smooth playback needs mpv: sudo apt install mpv libmpv2 && pip install python-mpv. "
@@ -367,9 +424,9 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             ttk.Label(page, text=name, style="Card.TLabel",
                       font=(self.base_font[0], self.base_font[1] + 2, "bold")).pack(anchor="w")
             ttk.Label(page, text=f"Coming in phase {phase}.", style="Help.TLabel").pack(anchor="w", pady=(2, 8))
-            ttk.Label(page, text=text, style="Card.TLabel", wraplength=270, justify="left").pack(anchor="w")
+            ttk.Label(page, text=text, style="Card.TLabel", wraplength=255, justify="left").pack(anchor="w")
             self.page_frames[name] = page
-        self.framing_tab = ttk.Frame(self.pages, style="Card.TFrame", padding=12)
+        self.framing_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.captions_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.text_tab = ScrollPage(self.pages, bg=COLORS["card"])
         self.export_tab = ScrollPage(self.pages, bg=COLORS["card"])
@@ -393,7 +450,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         for name in order:
             ttk.Radiobutton(rail, text=name, value=name, variable=self.page_var, style="Rail.Toolbutton",
                             command=lambda n=name: self.show_page(n)).pack(fill="x", pady=1)
-        self._build_framing_tab(self.framing_tab)
+        self._build_framing_tab(self.framing_tab.inner)
         self._build_captions_page(self.captions_tab.inner)
         self._build_text_page(self.text_tab.inner)
         self._build_export_tab(self.export_tab.inner)
@@ -426,6 +483,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         self.fr_pan_x = tk.DoubleVar(value=0.5)
         self.fr_pan_y = tk.DoubleVar(value=0.5)
         self.fr_zoom = tk.DoubleVar(value=1.0)
+        self.pan_scales = []
         for label, var, lo, hi in (("Left ↔ right", self.fr_pan_x, 0.0, 1.0),
                                    ("Up ↕ down (when zoomed)", self.fr_pan_y, 0.0, 1.0),
                                    ("Zoom in", self.fr_zoom, 1.0, 2.0)):
@@ -433,6 +491,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             s = ttk.Scale(t, from_=lo, to=hi, variable=var, orient="horizontal")
             s.pack(fill="x")
             s.bind("<ButtonRelease-1>", lambda e: self._framing_changed())
+            if var is not self.fr_zoom:
+                self.pan_scales.append(s)
         ttk.Label(t, text="Speed", style="Card.TLabel").pack(anchor="w", pady=(8, 0))
         self.fr_speed = tk.StringVar(value="1x")
         sp = ttk.Combobox(t, textvariable=self.fr_speed, values=SPEEDS, state="readonly", width=8)
@@ -441,25 +501,27 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         self._build_original_level(t)   # phase 3: the moment's own sound
         ttk.Button(t, text="Use for every moment", command=self.framing_to_all).pack(anchor="w", pady=(14, 4))
         self.auto_info = tk.StringVar()
-        ttk.Label(t, textvariable=self.auto_info, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
+        ttk.Label(t, textvariable=self.auto_info, style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w")
 
     def _build_export_tab(self, t):
         ttk.Label(t, text="Export", style="Card.TLabel",
                   font=(self.base_font[0], self.base_font[1] + 2, "bold")).pack(anchor="w")
-        ttk.Label(t, style="Card.TLabel", wraplength=270, justify="left",
+        page = t
+        t = self._section(page, "The video file")
+        ttk.Label(t, style="Card.TLabel", wraplength=255, justify="left",
                   text="Makes one 1080 x 1920 video that works on YouTube Shorts, TikTok, Instagram Reels "
                        "and Facebook Reels.").pack(anchor="w", pady=(4, 6))
         self.ready_var = tk.StringVar()
-        ttk.Label(t, textvariable=self.ready_var, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
+        ttk.Label(t, textvariable=self.ready_var, style="Help.TLabel", wraplength=250, justify="left").pack(anchor="w")
         row = ttk.Frame(t, style="Card.TFrame")
         row.pack(anchor="w", pady=(8, 8))
-        ttk.Button(row, text="Open Ready to post", command=lambda: self.open_folder(self.ready_root)).pack(side="left")
-        ttk.Button(row, text="Change…", command=self.change_ready_root).pack(side="left", padx=4)
+        ttk.Button(row, text="Open Ready to post", width=0, command=lambda: self.open_folder(self.ready_root)).pack(anchor="w", pady=1)
+        ttk.Button(row, text="Change…", width=0, command=self.change_ready_root).pack(anchor="w", pady=1)
         ttk.Label(t, text="Last exports", style="Card.TLabel").pack(anchor="w", pady=(6, 2))
         self.exports_var = tk.StringVar()
-        ttk.Label(t, textvariable=self.exports_var, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
-        self._build_upload_section(t)
-        self._build_platform_section(t)
+        ttk.Label(t, textvariable=self.exports_var, style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w")
+        self._build_upload_section(page)
+        self._build_platform_section(page)
 
     def _bind_keys(self):
         r = self.root
@@ -467,6 +529,14 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         r.bind_all("<Control-y>", lambda e: self.redo())
         r.bind_all("<Control-Z>", lambda e: self.redo())
         r.bind_all("<Control-s>", lambda e: self.save(note="Saved."))
+
+        def move(step):
+            self.move_selected(step)
+            return "break"
+
+        for widget in (self.tree, r):   # on the list too, so its own arrow keys don't also act
+            widget.bind("<Alt-Up>", lambda e: move(-1))
+            widget.bind("<Alt-Down>", lambda e: move(1))
 
         def plain(fn):
             def handler(event):
@@ -480,6 +550,18 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
                         ("<Left>", lambda: self.step(-1)), ("<Right>", lambda: self.step(1)),
                         ("<Delete>", self.delete_selected)):
             r.bind_all(key if key.startswith("<") else f"<Key-{key}>", plain(fn))
+
+        # A focused button also acts on Space, which undid the shortcut. In the main
+        # window Space now only plays or pauses; other windows keep the usual press.
+        def space_on_button(event):
+            if event.widget.winfo_toplevel() is r:
+                self.toggle_play()
+            else:
+                event.widget.invoke()
+            return "break"
+
+        for cls in ("TButton", "TRadiobutton", "TCheckbutton"):
+            r.bind_class(cls, "<Key-space>", space_on_button)
 
     # ============================================================== helpers
     def status(self, text: str):
@@ -496,8 +578,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
 
     def selected_source(self) -> P.Source | None:
         sel = self.sources_list.curselection()
-        if sel and sel[0] < len(self.project.sources):
-            return self.project.sources[sel[0]]
+        if sel and sel[0] < len(self.project.footage()):
+            return self.project.footage()[sel[0]]
         return self.project.source(self.current_source_id) if self.current_source_id else None
 
     def ensure_folder(self) -> str:
@@ -537,19 +619,21 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             self.channel_var.set(self.project.channel)
             self.root.title(f"{self.project.title} – {APP_NAME}")
             self.sources_list.delete(0, "end")
-            for s in self.project.sources:
+            for s in self.project.footage():
                 self.sources_list.insert("end", f"{s.name}  ({timeline.format_time(s.duration)})")
             if self.current_source_id and self.project.source(self.current_source_id):
-                idx = [s.id for s in self.project.sources].index(self.current_source_id)
-                self.sources_list.selection_set(idx)
+                ids = [s.id for s in self.project.footage()]
+                if self.current_source_id in ids:
+                    self.sources_list.selection_set(ids.index(self.current_source_id))
             sel = keep_selection or (self.tree.selection()[0] if self.tree.selection() else None)
             self.tree.delete(*self.tree.get_children())
             for i, seg in enumerate(self.project.segments, start=1):
                 src = self.project.source(seg.source_id)
                 self.tree.insert("", "end", iid=seg.id, values=(
-                    i, src.name if src else "?", timeline.format_time(seg.source_in, True),
-                    timeline.format_time(seg.source_out, True), timeline.format_time(seg.length, True),
-                    f"{seg.speed:g}x"))
+                    i, "–" if seg.reaction else timeline.format_time(seg.source_in, True),
+                    "–" if seg.reaction else timeline.format_time(seg.source_out, True),
+                    timeline.format_time(seg.length, True),
+                    f"{seg.speed:g}x", src.name if src else "?"))
             if sel and self.tree.exists(sel):
                 self.tree.selection_set(sel)
                 self.tree.see(sel)
@@ -575,6 +659,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         if i is None:
             self.framing_title.set("Pick a moment in the cut list.")
             self.auto_info.set("")
+            self.detail_var.set("")
+            self._enable_pan(False, False)
             return
         seg = self.project.segments[i]
         self.framing_title.set(f"Moment {i + 1}")
@@ -584,6 +670,10 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         self.fr_zoom.set(seg.framing.zoom)
         self.fr_speed.set(f"{seg.speed:g}x")
         self._refresh_original_level(seg)   # phase 3
+        src = self.project.source(seg.source_id)
+        self.detail_var.set(f"Moment {i + 1}: {timeline.format_time(seg.source_in, True)} to "
+                            f"{timeline.format_time(seg.source_out, True)}, lasts "
+                            f"{timeline.format_time(seg.length, True)}\n{src.name if src else '?'}")
         if seg.framing.mode == "auto":
             if seg.framing.auto_x is None:
                 self.auto_info.set("The automatic crop is worked out when you watch your cut or export. "
@@ -592,6 +682,20 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
                 self.auto_info.set(f"Automatic crop centred at {round(seg.framing.auto_x * 100)} % from the left.")
         else:
             self.auto_info.set("")
+        can_x = can_y = False
+        if src and src.width and src.height:
+            cw, ch, _x, _y = framing.crop_box(src.width, src.height, zoom=seg.framing.zoom)
+            can_x, can_y = cw < src.width - 2, ch < src.height - 2
+            if abs(src.width / src.height - framing.OUT_W / framing.OUT_H) < 0.01:
+                self.auto_info.set("This video is already 9:16, so these three choices look the same. "
+                                   "Zoom in to crop it, then choose the position.")
+        crop = seg.framing.mode == "crop"
+        self._enable_pan(crop and can_x, crop and can_y)
+
+    def _enable_pan(self, x: bool, y: bool):
+        """Grey out the position sliders when moving them could not change the picture."""
+        for scale, on in zip(self.pan_scales, (x, y)):
+            scale.state(["!disabled"] if on else ["disabled"])
 
     def _refresh_export(self):
         self.ready_var.set(f"Videos go to: {self.ready_root}")
@@ -605,28 +709,32 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         c = self.timeline
         c.delete("all")
         w = max(200, c.winfo_width())
-        label_w, lane_h, top = 92, 14, 3
+        label_w, lane_h, top = LANE_LABEL_W, LANE_H, LANE_TOP
         total = self.project.total_length
         for row, name in enumerate(LANES):
             y = top + row * (lane_h + 2)
             c.create_text(8, y + lane_h / 2, text=name, anchor="w", fill=COLORS["muted"], font=(self.base_font[0], 9))
             c.create_rectangle(label_w, y, w - 8, y + lane_h, fill=COLORS["lane"], outline="")
-        if total <= 0:
-            return
         span = (w - 8 - label_w)
         sel = self.selected_index()
+        self._draw_original_lane(c, span, sel)
+        if total <= 0:
+            return
+        moments_y = top + LANES.index("Moments") * (lane_h + 2)
         for p in timeline.layout(self.project.segments):
             x0 = label_w + p.edit_start / total * span
             x1 = label_w + p.edit_end / total * span
             chosen = p.index == sel
-            c.create_rectangle(x0 + 1, top + 1, x1 - 1, top + lane_h - 1, fill=COLORS["seg"],
-                               outline=COLORS["seg_sel"] if chosen else COLORS["seg_line"],
+            react = self.project.segments[p.index].reaction
+            c.create_rectangle(x0 + 1, moments_y + 1, x1 - 1, moments_y + lane_h - 1,
+                               fill=COLORS["react" if react else "seg"],
+                               outline=COLORS["react_line"] if react else COLORS["seg_sel" if chosen else "seg_line"],
                                width=3 if chosen else 1, tags=(f"seg{p.index}",))
             if x1 - x0 > 18:
-                c.create_text((x0 + x1) / 2, top + lane_h / 2, text=str(p.index + 1), fill=COLORS["text"],
+                c.create_text((x0 + x1) / 2, moments_y + lane_h / 2, text=str(p.index + 1), fill=COLORS["text"],
                               font=(self.base_font[0], 9, "bold"))
         # --- phase 3: Voice-over lane, one block per script line ---
-        vy = top + 1 * (lane_h + 2)
+        vy = top + LANES.index("Voice-over") * (lane_h + 2)
         for ln in S_script.visible(self.project):
             x0 = label_w + ln["start"] / total * span
             x1 = label_w + min(total, ln["end"]) / total * span
@@ -649,7 +757,31 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             c.create_rectangle(x0 + 1, cy + 4, max(x0 + 3, x1 - 1), cy + lane_h - 4, fill="#ffd8a8", outline="#e8590c")
         if self.watch.get() == "cut" and self.player.path == self.preview_path:
             x = label_w + min(1.0, self.player.time() / total) * span
-            c.create_line(x, 0, x, top + 6 * (lane_h + 2), fill=COLORS["accent"], width=2, tags=("playhead",))
+            c.create_line(x, moments_y, x, top + len(LANES) * (lane_h + 2), fill=COLORS["accent"], width=2,
+                          tags=("playhead",))
+
+    def _draw_original_lane(self, c, span, sel):
+        """The whole video you're cutting from, with the parts your moments use."""
+        src = self.project.source(self.current_source_id) if self.current_source_id else None
+        if src is None or not src.duration:
+            return
+        y = LANE_TOP + LANES.index("Original video") * (LANE_H + 2)
+
+        def x_of(t):
+            return LANE_LABEL_W + min(1.0, max(0.0, t / src.duration)) * span
+
+        for i, seg in enumerate(self.project.segments):
+            if seg.source_id != src.id:
+                continue
+            x0, x1 = x_of(seg.source_in), x_of(seg.source_out)
+            c.create_rectangle(x0, y + 1, max(x0 + 3, x1), y + LANE_H - 1, fill=COLORS["seg"],
+                               outline=COLORS["seg_line"], width=3 if i == sel else 1, tags=("original",))
+            if x1 - x0 > 18:
+                c.create_text((x0 + x1) / 2, y + LANE_H / 2, text=str(i + 1), fill=COLORS["text"],
+                              font=(self.base_font[0], 9, "bold"))
+        if self.watch.get() == "source" and self.player.path == src.path:
+            x = x_of(self.player.time())
+            c.create_line(x, y, x, y + LANE_H, fill=COLORS["accent_dark"], width=2, tags=("source_head",))
 
     # ========================================================== video files
     def add_video(self):
@@ -683,10 +815,11 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             return
         self.project.remove_source(src.id)
         if self.current_source_id == src.id:
-            self.current_source_id = self.project.sources[0].id if self.project.sources else None
+            self.current_source_id = self.project.footage()[0].id if self.project.footage() else None
         self.commit(f"Removed {src.name}.")
-        if self.current_source_id:
-            self.load_source(self.project.source(self.current_source_id))
+        if not self.project.segments:
+            self.watch.set("source")
+        self._sync_source()
 
     def _source_selected(self):
         if self._loading:
@@ -703,7 +836,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         without this the old video kept playing while Mark start / Mark end refused to work."""
         src = self.project.source(self.current_source_id) if self.current_source_id else None
         if src is None:
-            src = self.project.sources[0] if self.project.sources else None
+            src = self.project.footage()[0] if self.project.footage() else None
             self.current_source_id = src.id if src else None
         if self.watch.get() != "source":
             return
@@ -725,6 +858,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         self.player.set_overlay(False)
         self.player.load(src.path, at, src.duration)
         self.slider.configure(to=max(0.1, src.duration))
+        self.draw_timeline()
 
     # ============================================================== moments
     def add_typed_ranges(self):
@@ -739,7 +873,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             messagebox.showerror(APP_NAME, str(e))
             return
         self.ranges_var.set("")
-        self.commit(f"Added {len(new)} moment(s) from {src.name}.", keep_selection=new[-1].id)
+        note = self._whole_clip_note(src.id)
+        self.commit(f"Added {len(new)} moment(s) from {src.name}.{note}", keep_selection=new[-1].id)
 
     def mark_start(self):
         if not self._can_mark():
@@ -786,7 +921,13 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             return
         self.mark_in = self.mark_out = None
         self._show_marks()
-        self.commit(f"Added moment {len(self.project.segments)}.", keep_selection=seg.id)
+        note = self._whole_clip_note(seg.source_id)
+        self.commit(f"Added moment {len(self.project.segments)}.{note}", keep_selection=seg.id)
+
+    def _whole_clip_note(self, source_id: str) -> str:
+        if self.project.drop_whole_clip(source_id):
+            return " The whole-clip moment was taken out, so your cut is only your moments (Undo brings it back)."
+        return ""
 
     def _segment_selected(self):
         if self._loading:
@@ -800,12 +941,20 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         if seg.id == getattr(self, "_last_selected", None):
             return  # same moment re-selected after a redraw: don't jump the player
         self._last_selected = seg.id
+        if seg.reaction and self.watch.get() == "source":     # a reaction only exists in your cut
+            self.watch.set("cut")
+            self._watch_changed()
+            return
         if self.watch.get() == "source":
             src = self.project.source(seg.source_id)
             if src and (self.current_source_id != src.id or self.player.path != src.path):
                 self.load_source(src, seg.source_in)
             else:
                 self.player.seek(seg.source_in)
+            self._moment_end = None
+            if self.player.playing:   # picking a moment while playing: play just that moment
+                self._moment_end = seg.source_out
+                self._guard_moment_end()
         elif self.player.path == self.preview_path:
             self.player.seek(timeline.layout(self.project.segments)[i].edit_start)
 
@@ -880,7 +1029,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             return
         ref = self.project.segments[i]
         for seg in self.project.segments:
-            if seg is not ref:
+            if seg is not ref and not seg.reaction:
                 auto_x, auto_y = seg.framing.auto_x, seg.framing.auto_y
                 seg.framing = copy.deepcopy(ref.framing)
                 seg.framing.auto_x, seg.framing.auto_y = auto_x, auto_y
@@ -890,7 +1039,92 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
     def toggle_play(self):
         if not self.player.path:
             return
+        if not self.player.playing and self.watch.get() == "source":
+            self._arm_moment_end()
+        elif not self.player.playing:
+            self._arm_cut_end()
         self.player.toggle()
+        if self._moment_end is not None:
+            self._guard_moment_end()
+
+    # --- play a selected moment from its start time to its finish time (source view) ---
+    _moment_end = None
+
+    def _selected_moment_here(self):
+        """The selected moment, if it is cut from the video now loaded in the player."""
+        i = self.selected_index()
+        if i is None or not self.player.path:
+            return None
+        seg = self.project.segments[i]
+        src = self.project.source(seg.source_id)
+        return seg if src and src.path == self.player.path else None
+
+    def _arm_moment_end(self):
+        """Before playing: if the playhead is inside the moment (or at its end), stop at its end.
+        Parked at the end, Play replays the moment. Anywhere else the video plays freely."""
+        seg = self._selected_moment_here()
+        self._moment_end = None
+        if seg is None:
+            return
+        t = self.player.time()
+        if t >= seg.source_out - 0.05 and t <= seg.source_out + 0.5:
+            self.player.seek(seg.source_in)
+            t = seg.source_in
+        if seg.source_in - 0.05 <= t < seg.source_out:
+            self._moment_end = seg.source_out
+
+    def _guard_moment_end(self):
+        end = self._moment_end
+        if end is None:
+            return
+        if not self.player.playing or self.watch.get() != "source":
+            self._moment_end = None   # paused by the user, or switched view
+            return
+        if self.player.time() >= end:
+            self._moment_end = None
+            self.player.pause()
+            self.player.seek(end)
+            return
+        self.root.after(30, self._guard_moment_end)
+
+    # --- My cut: play one moment at a time ---
+    _cut_end = None
+
+    def _arm_cut_end(self):
+        """Before playing your cut: stop where the moment under the playhead ends.
+        Parked at the picked moment's end, Play replays that moment."""
+        self._cut_end = None
+        if (not self.one_moment.get() or getattr(self, "_play_range", None)
+                or self.player.path != self.preview_path or not self.project.segments):
+            return
+        pieces = timeline.layout(self.project.segments)
+        t = self.player.time()
+        i = self.selected_index()
+        if i is not None and abs(t - (pieces[i].edit_end - 0.04)) <= 0.12:
+            self.player.seek(pieces[i].edit_start)
+            t = pieces[i].edit_start
+        here = next((p for p in pieces if p.edit_start - 0.05 <= t < p.edit_end - 0.1), None)
+        if here is None:
+            return
+        # Stop a frame early, so the next moment's picture never shows.
+        self._cut_end = here.edit_end - 0.04
+        self.tree.selection_set(self.project.segments[here.index].id)
+        self._last_selected = self.project.segments[here.index].id
+        self.root.after(30, self._guard_cut_end)
+
+    def _guard_cut_end(self):
+        end = self._cut_end
+        if end is None:
+            return
+        if not self.player.playing or self.watch.get() != "cut" or not self.one_moment.get():
+            self._cut_end = None
+            return
+        if self.player.time() >= end:
+            self._cut_end = None
+            self.player.pause()
+            self.player.seek(end)
+            return
+        self.root.after(30, self._guard_cut_end)
 
     def step(self, seconds: float):
         if self.player.path:
@@ -913,6 +1147,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
                 src = self.project.source(self.current_source_id) if self.current_source_id else None
                 total = src.duration if src else 0.0
             self.time_var.set(f"{timeline.format_time(t, True)} / {timeline.format_time(total, True)}")
+            self.showing_var.set(self._showing_text(t))
             if not self._slider_drag:
                 self.slider.set(t)
             self.play_btn.configure(text="Pause" if self.player.playing else "Play")
@@ -921,18 +1156,27 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
                 if self.player.playing:
                     self.player.pause()
                 self._stop_at = None
-            if self.watch.get() == "cut":
-                self.draw_timeline()
+            self.draw_timeline()
+            self._update_react_where()
         except Exception:
             pass
         self.root.after(200, self._tick)
+
+    def _showing_text(self, t: float) -> str:
+        if self.watch.get() != "cut":
+            return "ORIGINAL VIDEO"
+        hit = timeline.edit_to_source(self.project.segments, min(t, max(0.0, self.project.total_length - 0.05)))
+        if not hit:
+            return "YOUR CUT"
+        what = "reaction" if self.project.segments[hit[0]].reaction else "moment"
+        return f"YOUR CUT · {what} {hit[0] + 1} of {len(self.project.segments)}"
 
     def _watch_changed(self):
         if self.watch.get() == "source":
             self.player.pause()
             src = self.project.source(self.current_source_id) if self.current_source_id else None
-            if src is None and self.project.sources:
-                src = self.project.sources[0]
+            if src is None and self.project.footage():
+                src = self.project.footage()[0]
             self.load_source(src)
         else:
             if not self.project.segments:
@@ -946,12 +1190,16 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             self.player.set_overlay(self.safe_var.get())
 
     def _timeline_click(self, event):
+        row = int((event.y - LANE_TOP) // (LANE_H + 2))
+        if row == LANES.index("Original video"):
+            self._original_lane_click(event.x)
+            return
         # --- phase 3: a click on a Voice-over block selects that script line ---
-        if 3 + 1 * 16 <= event.y < 3 + 2 * 16:
+        if row == LANES.index("Voice-over"):
             total = self.project.total_length
             w = self.timeline.winfo_width()
-            if total > 0 and event.x >= 92:
-                t = (event.x - 92) / max(1, (w - 8 - 92)) * total
+            if total > 0 and event.x >= LANE_LABEL_W:
+                t = (event.x - LANE_LABEL_W) / max(1, (w - 8 - LANE_LABEL_W)) * total
                 for ln in S_script.visible(self.project):
                     if ln["start"] - 0.05 <= t <= max(ln["end"], ln["start"] + 0.3):
                         self.select_line(ln["id"])
@@ -959,7 +1207,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
         # --- end phase 3 ---
         total = self.project.total_length
         w = self.timeline.winfo_width()
-        label_w = 92
+        label_w = LANE_LABEL_W
         if total <= 0 or event.x < label_w:
             return
         t = (event.x - label_w) / max(1, (w - 8 - label_w)) * total
@@ -968,6 +1216,20 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             self.tree.selection_set(self.project.segments[hit[0]].id)
             if self.watch.get() == "cut" and self.player.path == self.preview_path:
                 self.player.seek(t)
+
+    def _original_lane_click(self, x: float):
+        """Show that spot of the video you're cutting from."""
+        src = self.project.source(self.current_source_id) if self.current_source_id else None
+        if src is None or x < LANE_LABEL_W:
+            return
+        span = max(1, self.timeline.winfo_width() - 8 - LANE_LABEL_W)
+        t = min(1.0, (x - LANE_LABEL_W) / span) * src.duration
+        if self.watch.get() != "source" or self.player.path != src.path:
+            self.player.pause()
+            self.watch.set("source")
+            self.load_source(src, t)
+        else:
+            self.player.seek(t)
 
     # ============================================================ preview
     def _schedule_preview(self, now: bool = False):
@@ -999,18 +1261,34 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
             self.preview_path = path
             self.preview_stale = False
             if self.watch.get() == "cut":
-                at = self.player.time() if self.player.path == path else 0.0
+                at = self.player.time() if self.player.path == path else self._selected_start()
                 self.player.load(path, at, snap.total_length)
                 self.player.set_overlay(self.safe_var.get())
                 self.slider.configure(to=max(0.1, snap.total_length))
-                self.status("Showing your cut. Changes update it automatically.")
+                self.status(self._cut_ready_note(snap))
+                self._refresh_cover()
                 if getattr(self, "_play_range", None):   # phase 3: Play line
                     self._start_play_range()
 
         self.run_job("Making a quick preview of your cut…", work, done)
 
+    @staticmethod
+    def _cut_ready_note(project) -> str:
+        """What to say under the window once My cut is showing."""
+        silent = sum(1 for ln in S_script.visible(project) if not ln.get("audio"))
+        if not silent:
+            return "Showing your cut. Changes update it automatically."
+        muted = " New story mutes the original sound, so those parts are silent." if project.mode == "new_story" else ""
+        return f"{silent} script line(s) have no voice yet: open Voice and press Make voices.{muted}"
+
+    def _selected_start(self) -> float:
+        """Where the selected moment begins in the finished video (0 if none is selected)."""
+        i = self.selected_index()
+        return timeline.layout(self.project.segments)[i].edit_start if i is not None else 0.0
+
     def _work_out_auto(self, snap: P.Project, progress, share: float):
-        todo = [s for s in snap.segments if s.framing.mode == "auto" and s.framing.auto_x is None]
+        todo = [s for s in snap.segments
+                if s.framing.mode == "auto" and s.framing.auto_x is None and not s.reaction]
         for n, seg in enumerate(todo, start=1):
             if self.cancel.is_set():
                 raise render.Cancelled("Stopped.")
@@ -1187,30 +1465,65 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, SoundPanelsMixin, ReviewPanel
     def open_dialog(self):
         path = filedialog.askopenfilename(title="Open an edit", initialdir=self.edits_root,
                                           filetypes=[("Clip Editor edit", P.PROJECT_FILE), ("All files", "*")])
-        if path:
+        if not path:
+            return
+        if path.lower().endswith(importer.VIDEO_EXTS):
+            self.open_video(path)
+        else:
             self.open_project(path)
+
+    def open_video(self, path: str):
+        """A video picked in Open…: start a new edit with it."""
+        if importer.details_for(path):          # a Clipping Studio clip: bring its upload details
+            self.open_clip(path)
+            return
+        try:
+            src = media.probe(path)
+        except media.MediaError as e:
+            messagebox.showerror(APP_NAME, str(e))
+            return
+        self.player.pause()
+        self.project = P.Project(title=P.safe_name(os.path.splitext(os.path.basename(path))[0]),
+                                 channel=self.project.channel)
+        self.apply_channel_logo()
+        self.apply_template_to_new_edit()
+        self.current_source_id = self.project.add_source(src).id
+        self.folder = None
+        self.history = P.History(self.project)
+        self.preview_path = None
+        self.mark_in = self.mark_out = None
+        self._show_marks()
+        self.watch.set("source")
+        self.save()
+        self.refresh_all()
+        self._sync_source()
+        self.status(f"Started a new edit with {src.name}. Mark moments with I and O, or type them.")
 
     def open_project(self, path: str, quiet: bool = False):
         try:
             project, folder = P.load(path)
-        except (OSError, ValueError, json.JSONDecodeError) as e:
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
             if not quiet:
-                messagebox.showerror(APP_NAME, f"Can't open that edit: {e}")
+                messagebox.showerror(APP_NAME, str(e) if isinstance(e, P.NotAnEdit) else f"Can't open that edit: {e}")
             self.refresh_all()
             return
         self.player.pause()
+        repaired = S_script.repair(project)
         self.project, self.folder = project, folder
         self.history = P.History(project)
         self.settings["last_project"] = folder
         save_settings(self.settings)
         self.preview_path = None
         self.watch.set("source")
-        self.current_source_id = project.sources[0].id if project.sources else None
+        self.current_source_id = project.footage()[0].id if project.footage() else None
         self.refresh_all()
         if self.current_source_id:
             self.load_source(project.source(self.current_source_id))
         missing = [p for p in project.problems() if "can't be found" in p]
-        self.status(missing[0] if missing else f"Opened '{project.title}'.")
+        if repaired:
+            self.save()
+        fixed = f" Cleaned {repaired} script line(s); press Make voices to hear them." if repaired else ""
+        self.status(missing[0] if missing else f"Opened '{project.title}'.{fixed}")
 
     def undo(self):
         p = self.history.undo()

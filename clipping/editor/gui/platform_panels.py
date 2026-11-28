@@ -28,9 +28,11 @@ PLATFORM_NAMES = [(spec["label"], key) for key, spec in platforms.PLATFORMS.item
 class PlatformPanelsMixin:
     # ============================================================ export tab additions
     def _build_platform_section(self, t):
-        ttk.Separator(t).pack(fill="x", pady=10)
-        self._heading(t, "Other platforms", "Follows the YouTube text until you change it. "
-                                            "Saved as TikTok.txt, Instagram.txt and Facebook.txt.")
+        page = t
+        t = self._section(page, "Other platforms", open_=False)
+        ttk.Label(t, text="Follows the YouTube text until you change it. Saved as TikTok.txt, Instagram.txt "
+                          "and Facebook.txt.", style="Help.TLabel", wraplength=255,
+                  justify="left").pack(anchor="w", pady=(0, 4))
         self.plat_var = tk.StringVar(value=PLATFORM_NAMES[0][0])
         cb = ttk.Combobox(t, textvariable=self.plat_var, state="readonly", width=18,
                           values=[n for n, _ in PLATFORM_NAMES])
@@ -42,7 +44,7 @@ class PlatformPanelsMixin:
         self.plat_title_entry.bind("<FocusOut>", lambda e: self._platform_text_changed("title"))
         self.plat_title_entry.bind("<Return>", lambda e: self._platform_text_changed("title"))
         self.plat_body_lbl = ttk.Label(t, text="Caption", style="Card.TLabel")
-        self.plat_body = tk.Text(t, height=5, wrap="word", relief="flat", font=self.base_font,
+        self.plat_body = tk.Text(t, height=5, width=10, wrap="word", relief="flat", font=self.base_font,
                                  highlightthickness=1, highlightbackground="#d0d5dd")
         self.plat_body.bind("<FocusOut>", lambda e: self._platform_text_changed(self._plat_body_field()))
         self.plat_body.bind("<KeyRelease>", lambda e: self._platform_counter())
@@ -56,15 +58,16 @@ class PlatformPanelsMixin:
         ttk.Button(row, text="Follow YouTube", command=self.platform_follow_youtube).pack(side="left")
         ttk.Button(t, text="Write them with Claude", command=self.platforms_with_claude).pack(anchor="w", pady=(4, 0))
 
-        ttk.Separator(t).pack(fill="x", pady=10)
-        self._heading(t, "Several edits at once", "Export today's edits one after another.")
+        t = self._section(page, "Several edits at once")
+        ttk.Label(t, text="Export today's edits one after another.", style="Help.TLabel").pack(anchor="w")
         ttk.Button(t, text="Export several edits…", command=self.open_batch_dialog).pack(anchor="w")
 
-        ttk.Separator(t).pack(fill="x", pady=10)
-        self._heading(t, "Upload list", "Every export is added to upload_manifest.json in Ready to post, "
+        t = self._section(page, "Upload list")
+        ttk.Label(t, text="Every export is added to upload_manifest.json in Ready to post, "
                                         "which the YouTube and Facebook uploaders read. Both post the YouTube "
                                         "title and description; the Facebook text above is for posting by "
-                                        "hand. Nothing is uploaded until you run the command.")
+                                        "hand. Nothing is uploaded until you run the command.", style="Help.TLabel", wraplength=255,
+                  justify="left").pack(anchor="w", pady=(0, 4))
         self.manifest_info = tk.StringVar()
         ttk.Label(t, textvariable=self.manifest_info, style="Help.TLabel", wraplength=260,
                   justify="left").pack(anchor="w")

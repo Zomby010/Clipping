@@ -73,15 +73,32 @@ def cover_time(project) -> float:
     return max(0.0, min(float(t), max(0.0, total - 0.05)))
 
 
+def cover_picture_path(project) -> str | None:
+    """The picture you chose for the cover, if it is still there."""
+    path = (project.cover or {}).get("image")
+    return path if path and os.path.exists(path) else None
+
+
+def fit_cover(path: str, size: tuple[int, int] = (1080, 1920)):
+    """Your picture filling the tall cover (centre crop)."""
+    from PIL import Image, ImageOps
+    with Image.open(path) as im:
+        return ImageOps.fit(ImageOps.exif_transpose(im).convert("RGB"), size, Image.LANCZOS)
+
+
 def make_cover(video_path: str, out_jpg: str, seconds: float, title: str = "",
-               font_path: str | None = None) -> str:
-    """A 1080x1920 JPG of the frame at ``seconds``, with ``title`` on it if given."""
+               font_path: str | None = None, picture: str | None = None) -> str:
+    """A 1080x1920 JPG of the frame at ``seconds`` (or of ``picture``), with
+    ``title`` on it if given."""
     from PIL import Image, ImageDraw, ImageFont
-    with tempfile.TemporaryDirectory(prefix="clipedit_cover_") as tmp:
-        png = os.path.join(tmp, "frame.png")
-        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{seconds:.3f}",
-                        "-i", video_path, "-frames:v", "1", png], check=True, capture_output=True)
-        img = Image.open(png).convert("RGB")
+    if picture:
+        img = fit_cover(picture)
+    else:
+        with tempfile.TemporaryDirectory(prefix="clipedit_cover_") as tmp:
+            png = os.path.join(tmp, "frame.png")
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{seconds:.3f}",
+                            "-i", video_path, "-frames:v", "1", png], check=True, capture_output=True)
+            img = Image.open(png).convert("RGB")
     title = (title or "").strip()
     if title:
         img = Image.alpha_composite(img.convert("RGBA"),
@@ -110,7 +127,7 @@ def write_extras(project, folder: str, video_path: str, fonts: dict | None = Non
         fonts = S.ensure_fonts()
     cover = os.path.join(folder, "cover.jpg")
     make_cover(video_path, cover, cover_time(project), (project.cover or {}).get("title", ""),
-               fonts.get(S.COVER_FONT))
+               fonts.get(S.COVER_FONT), cover_picture_path(project))
     written.append(cover)
     lines = C.srt_lines(project)
     if lines:

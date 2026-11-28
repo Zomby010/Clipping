@@ -66,7 +66,10 @@ def _inside_safe(x0, y0, x1, y1, w=1080, h=1920) -> bool:
 
 def _missing_files(project) -> list[str]:
     out = []
+    used = {s.source_id for s in project.segments}
     for s in project.sources:
+        if s.kind == "reaction" and s.id not in used:
+            continue
         if not os.path.exists(s.path):
             out.append(s.name or os.path.basename(s.path))
     m = A.music(project)
@@ -410,6 +413,8 @@ def cut_prompt(project, target: int) -> str:
     C.refresh(project)
     moments = []
     for seg in project.segments:
+        if seg.reaction:
+            continue
         src = project.source(seg.source_id)
         words = [{"from": round(c["src_start"], 1), "to": round(c["src_end"], 1), "text": c["text"]}
                  for c in project.captions if c.get("segment_id") == seg.id and c.get("visible", True)]
@@ -478,6 +483,17 @@ def apply_cut(project, parts: list[dict]) -> None:
         seen.add(base.id)
         seg.source_in, seg.source_out = p["keep_from"], p["keep_to"]
         new.append(seg)
+    # Inserted reactions stay, each after the same moment as before.
+    before = None
+    for old in project.segments:
+        if not old.reaction:
+            before = old.id
+            continue
+        at = 0
+        for i, s in enumerate(new):
+            if s.id == before or (s.reaction and i == at):
+                at = i + 1
+        new.insert(at, old)
     project.segments = new
     C.refresh(project)
     O.refresh(project)

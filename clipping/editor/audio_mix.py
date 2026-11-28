@@ -27,6 +27,7 @@ scale (works on old and new ffmpeg) and ``volume=N`` puts levels back.
 from __future__ import annotations
 
 import json
+import math
 import os
 
 from clipping.editor import overlays as O
@@ -209,6 +210,13 @@ def _fit(total: float) -> str:
     return f"apad,atrim=0:{_num(total)},asetpts=PTS-STARTPTS"
 
 
+def has_original_sound(project) -> bool:
+    """Is any moment's own sound audible?"""
+    from clipping.editor import render
+    return any(render.original_level(project, s) > 0 and (project.source(s.source_id) or s).__dict__.get("has_audio")
+               for s in project.segments)
+
+
 def needs_mixer(project, reactions=(), voices=None) -> bool:
     voices = voice_clips(project) if voices is None else voices
     return bool(music(project) or O.visible_sfx(project) or reactions or voices
@@ -235,9 +243,18 @@ def build(project, total: float, next_input: int, reactions: list[tuple[int, "O.
     streams.append("a_main")
 
     voices = voice_clips(project) if voices is None else voices
+    # Above 100 % the voice is already near full scale, so everything else is turned
+    # down instead. Below 100 % the voice itself is turned down.
+    boost = max([float(v.get("gain", 1.0)) for v in voices] + [1.0])
+    others = 1.0 / boost
+    spans_v = [(float(v["start"]), float(v["end"])) for v in voices]
+    if boost > 1.0:
+        parts[0] = parts[0].replace("[a_main]", "[a_main_loud]")
+        parts.append(f"[a_main_loud]volume='{duck_expression(spans_v, others)}':eval=frame[a_main]")
     for n, v in enumerate(voices):
         args += ["-i", v["path"]]
-        parts.append(f"[{k}:a]{FMT},volume={_num(float(v.get('gain', 1.0)))},"
+        gain = min(1.0, float(v.get("gain", 1.0)))
+        parts.append(f"[{k}:a]{FMT},volume={_num(gain)},"
                      f"{_delay(float(v['start']))},{_fit(total)}[a_vo{n}]")
         streams.append(f"a_vo{n}")
         k += 1
@@ -258,6 +275,8 @@ def build(project, total: float, next_input: int, reactions: list[tuple[int, "O.
         k += 1
         level = DUCK_LEVELS.get(m.get("ducking", "strong"), 0.3)
         spans = speech_times(project, voices)
+        if boost > 1.0:
+            chain.append(f"volume='{duck_expression(spans_v, others)}':eval=frame")
         if level < 1.0 and spans:
             chain.append(f"volume='{duck_expression(spans, level)}':eval=frame")
             parts.append(",".join(chain) + f",{_fit(total)}[a_music]")
@@ -292,6 +311,11 @@ def build(project, total: float, next_input: int, reactions: list[tuple[int, "O.
     tail = []
     target = loudness_target(project)
     if target is not None:
+        quieter = max([float(v.get("gain", 1.0)) for v in voices], default=1.0)
+        alone = voices and not (m or O.visible_sfx(project) or reactions) and not has_original_sound(project)
+        if alone and 0 < quieter < 1.0:
+            # Nothing to compare the voice with: evening out the loudness would undo the slider.
+            target = max(-40.0, target + 20 * math.log10(quieter))
         tail.append(f"loudnorm=I={_num(target)}:TP={_num(TRUE_PEAK)}:LRA=11")
         tail.append("aresample=48000")
     if len(streams) == 1:

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -70,6 +71,7 @@ CHANNEL_VOICE = {
 
 SPEED_LIMITS = (-50, 100)   # percent
 PITCH_LIMITS = (-50, 50)    # Hz
+VOLUME_LIMITS = (0.0, 2.0)   # voice-over loudness, 1.0 = as made
 SAMPLE_TEXT = {"en": "Here is how I sound. Pick me if you like it.",
                "sw": "Hivi ndivyo ninavyosikika. Nichague kama unapenda."}
 
@@ -96,7 +98,19 @@ def settings(project) -> dict:
         "speed": int(v.get("speed") or 0),
         "pitch": int(v.get("pitch") or 0),
         "characters": [dict(c) for c in v.get("characters", [])],
+        "volume": min(VOLUME_LIMITS[1], max(VOLUME_LIMITS[0], float(v.get("volume", 1.0)))),
     }
+
+
+def set_line_voice(line: dict, voice_id: str) -> bool:
+    """Give one line its own voice ("" = automatic). The old audio, a mic take
+    included, no longer matches, so it is dropped. True if anything changed."""
+    if (line.get("voice") or "") == voice_id and not line.get("recorded"):
+        return False
+    line["voice"] = voice_id
+    line["audio"], line["duration"], line["words"] = "", 0.0, []
+    line.pop("recorded", None)
+    return True
 
 
 def voice_for(project, line: dict) -> str:
@@ -271,6 +285,34 @@ def stop_recording(proc: subprocess.Popen) -> None:
         proc.wait()
 
 
+MIC_SILENT_DB = -30.0     # loudest sound in a take below this = nothing was said
+
+
+def loudest_after_start(path: str, duration: float) -> float | None:
+    """The loudest point in dB, ignoring the click a microphone makes as it opens."""
+    skip = 0.7 if duration > 1.2 else 0.0
+    try:
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-ss", str(skip), "-i", path, "-af", "volumedetect",
+                              "-f", "null", "-"], capture_output=True, text=True, timeout=60).stderr
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    found = re.search(r"max_volume: (-?[\d.]+) dB", out)
+    return float(found.group(1)) if found else None
+
+
+def level_recording(path: str) -> None:
+    """Cut rumble and bring a take to about the loudness of the made voices.
+    The take is kept as it is if this fails."""
+    tmp = path + ".level.mp3"
+    try:
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", path, "-af",
+                        "highpass=f=80,loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1",
+                        "-c:a", "libmp3lame", "-q:a", "3", tmp], check=True, capture_output=True, timeout=120)
+        os.replace(tmp, path)
+    except (OSError, subprocess.SubprocessError):
+        _drop(tmp)
+
+
 def attach_recording(project, line: dict, folder: str, recorded_path: str) -> None:
     """Use a recorded file as a line's voice. There are no word timings, so
     captions spread the words evenly over the duration."""
@@ -278,6 +320,14 @@ def attach_recording(project, line: dict, folder: str, recorded_path: str) -> No
     if dur <= 0.2:
         _drop(recorded_path)
         raise VoiceError("Nothing was recorded. Check that your microphone is on and try again.")
+    peak = loudest_after_start(recorded_path, dur)
+    if peak is not None and peak < MIC_SILENT_DB:
+        _drop(recorded_path)
+        raise VoiceError("The microphone picked up almost no sound, so the take was not used. Open your "
+                         "computer's Sound settings, choose the right Input, check its level moves when "
+                         "you speak, then record again.")
+    level_recording(recorded_path)
+    dur = probe_duration(recorded_path)
     line["audio"] = os.path.relpath(recorded_path, folder)
     line["duration"] = round(dur, 3)
     line["words"] = even_words(line["text"], dur)
@@ -326,6 +376,7 @@ def voice_clips(project, folder: str | None = None) -> list[dict]:
     if not folder:
         return []
     S.refresh(project)
+    volume = settings(project)["volume"]
     out = []
     for ln in S.visible(project):
         if not ln.get("audio"):
@@ -335,7 +386,7 @@ def voice_clips(project, folder: str | None = None) -> list[dict]:
             continue
         dur = float(ln.get("duration") or 0.0) or probe_duration(path)
         out.append({"path": os.path.abspath(path), "start": round(ln["start"], 3),
-                    "end": round(ln["start"] + dur, 3), "gain": float(ln.get("gain", 1.0)),
+                    "end": round(ln["start"] + dur, 3), "gain": round(float(ln.get("gain", 1.0)) * volume, 3),
                     "line_id": ln["id"]})
     out.sort(key=lambda c: c["start"])
     return out
