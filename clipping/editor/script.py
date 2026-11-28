@@ -25,6 +25,8 @@ its footage now is. Nothing here needs Tk, ffmpeg or the network.
 
 from __future__ import annotations
 
+import json
+import re
 import uuid
 
 from clipping.editor import timeline
@@ -99,6 +101,39 @@ def _segment_for(project, line: dict):
     return own  # trimmed past it: it simply starts with its moment
 
 
+# ---------------------------------------------------------------- Claude's wrapper
+def unwrap_text(text: str) -> str:
+    """Claude sometimes answers with the JSON inside the JSON, e.g. a line whose
+    words are '{"text": "Sir, ..."}'. Return just the words."""
+    out = (text or "").strip()
+    for _ in range(3):
+        if not (out.startswith("{") and '"text"' in out):
+            break
+        try:
+            inner = json.loads(out)["text"]
+        except (ValueError, KeyError, TypeError):
+            found = re.match(r'^\{\s*"text"\s*:\s*"(.*?)"?\s*\}?$', out, re.S)
+            if not found:
+                break
+            inner = found.group(1).replace('\\"', '"')
+        if not isinstance(inner, str):
+            break
+        out = inner.strip()
+    return out
+
+
+def repair(project) -> int:
+    """Clean wrapped words in an edit saved earlier. Their voice said the wrapper
+    out loud, so it is made again. Returns how many lines were fixed."""
+    fixed = 0
+    for ln in project.script_lines:
+        clean = unwrap_text(ln.get("text", ""))
+        if clean != (ln.get("text") or "").strip():
+            set_text(ln, clean)
+            fixed += 1
+    return fixed
+
+
 # ---------------------------------------------------------------- creating lines
 def make_line(project, segment_id: str, offset: float, text: str, character: str = "",
               cue: str = "", voice: str = "") -> dict:
@@ -111,7 +146,7 @@ def make_line(project, segment_id: str, offset: float, text: str, character: str
         "id": new_id(), "segment_id": seg.id, "source_id": seg.source_id,
         "src_start": round(seg.source_in + offset * speed, 3),
         "offset": round(offset, 3),
-        "text": " ".join((text or "").split()), "character": character or "", "voice": voice or "",
+        "text": " ".join(unwrap_text(text).split()), "character": character or "", "voice": voice or "",
         "cue": cue or "", "audio": "", "duration": 0.0, "words": [],
         "start": 0.0, "end": 0.0, "visible": True,
     }
@@ -166,10 +201,11 @@ def from_claude(project, items: list[dict], default_voice_for=None) -> list[dict
 # ---------------------------------------------------------------- editing
 def set_text(line: dict, text: str) -> None:
     """New words invalidate the voice and its timings (they are made again)."""
-    text = " ".join((text or "").split())
+    text = " ".join(unwrap_text(text).split())
     if text != line.get("text"):
         line["text"] = text
         line["audio"], line["duration"], line["words"] = "", 0.0, []
+        line.pop("recorded", None)   # an old mic take says the old words
 
 
 def nudge(project, line_id: str, delta: float) -> None:

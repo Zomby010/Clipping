@@ -109,6 +109,7 @@ def import_clip(video_path: str, channel: str = "GTA 6", source=None) -> P.Proje
     if end <= 0.1:
         raise ValueError("This clip seems to be empty.")
     seg = pr.add_segment(src.id, 0.0, end)
+    seg.whole_clip = True                # replaced by your own moments once you add some
     seg.framing.mode = "fit_blur"        # show the whole tall clip, no crop
     pr.upload = {k: details[k] for k in ("title", "description", "hashtags") if details.get(k)}
     pr.review = {"note": BURNED_IN_NOTE, "imported_from": video_path}

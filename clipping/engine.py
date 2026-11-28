@@ -13,6 +13,8 @@ import time
 from yt_dlp import YoutubeDL
 from faster_whisper import WhisperModel
 
+from clipping import sources
+
 
 # ==============================================================================
 # TAHAP 1: DOWNLOAD VIDEO
@@ -943,7 +945,7 @@ OUTPUT RULES:
 - Do not give any explanation outside the JSON.
 - Every field must be filled.
 - When unsure, prioritise accuracy to the clip over excessive creativity.
-{_hook_v2_prompt}{_segment_prompt}{_reaction_prompt}
+{_hook_v2_prompt}{_segment_prompt}{_reaction_prompt}{sources.selection_rules(cfg, MIN_CLIP_DURATION, MAX_CLIP_DURATION)}
 
 REQUIRED JSON STRUCTURE (follow these field names exactly):
 [
@@ -1057,10 +1059,13 @@ def analyze_with_claude(transkrip_lengkap: str, cfg) -> list[dict]:
                        images=[s["path"] for s in sheets], label="Clips")
     if not isinstance(clips, list):
         raise ValueError("Claude did not return a list of clips.")
+    storyline_cuts = bool(getattr(cfg, "storyline_cuts", False))
+    if storyline_cuts:
+        sources.fit_bounds(clips)
     if source_end:
         lo, hi = clip_length_range(cfg)
         validate_clips(clips, source_end=source_end + 1.0, requested_clips=cfg.jumlah_clip,
-                       min_duration=max(5, lo - 3), max_duration=hi + 3)
+                       min_duration=max(5, lo - 3), max_duration=hi + 3, storyline_cuts=storyline_cuts)
     cfg.ai_run_meta = {
         "actual_provider": f"claude-{claude.pick_backend(cfg)}",
         "model": getattr(cfg, "claude_model", None) or claude.DEFAULT_MODEL,

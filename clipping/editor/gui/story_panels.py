@@ -29,6 +29,7 @@ from clipping.editor import timeline
 from clipping.editor import voice as V
 
 NO_CHARACTER = "(narrator)"
+AUTO_VOICE = "Automatic"
 
 
 class StoryPanelsMixin:
@@ -37,32 +38,32 @@ class StoryPanelsMixin:
     # ================================================================= Story tab
     def _build_story_page(self, t):
         self._heading(t, "Story", "Claude watches, you pick the mode and angle, Claude writes lines timed to your cut.")
+        page = t
+        t = self._section(page, "1. Watch")
         ttk.Button(t, text="Ask Claude to watch", style="Accent.TButton", command=self.ask_to_watch).pack(anchor="w")
         self.watch_info = tk.StringVar(value="Claude reads the speech and looks at pictures of the video, "
                                              "then lists what happens and when.")
-        ttk.Label(t, textvariable=self.watch_info, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w", pady=(2, 4))
+        ttk.Label(t, textvariable=self.watch_info, style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w", pady=(2, 4))
         cols = ("star", "time", "what", "score")
-        self.scene_tree = ttk.Treeview(t, columns=cols, show="headings", height=5, selectmode="browse")
-        for c, w, txt in (("star", 24, "★"), ("time", 70, "When"), ("what", 120, "What happens"), ("score", 36, "Score")):
+        self.scene_tree = self._scrolled_tree(t, columns=cols, height=5)
+        for c, w, txt in (("star", 22, "★"), ("time", 70, "When"), ("what", 100, "What happens"), ("score", 36, "Score")):
             self.scene_tree.heading(c, text=txt)
             self.scene_tree.column(c, width=w, stretch=(c == "what"), anchor="w")
-        self.scene_tree.pack(fill="x")
         self.scene_tree.bind("<<TreeviewSelect>>", lambda e: self._scene_selected())
         self.scene_why = tk.StringVar()
-        ttk.Label(t, textvariable=self.scene_why, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w", pady=2)
+        ttk.Label(t, textvariable=self.scene_why, style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w", pady=2)
         row = ttk.Frame(t, style="Card.TFrame")
         row.pack(anchor="w")
-        ttk.Button(row, text="Add to cut", command=self.add_scene_to_cut).pack(side="left")
-        ttk.Button(row, text="Add all ★", command=self.add_starred_to_cut).pack(side="left", padx=4)
+        ttk.Button(row, text="Add to cut", width=0, command=self.add_scene_to_cut).pack(side="left")
+        ttk.Button(row, text="Add all ★", width=0, command=self.add_starred_to_cut).pack(side="left", padx=4)
 
-        ttk.Separator(t).pack(fill="x", pady=8)
-        ttk.Label(t, text="Mode", style="Card.TLabel", font=(self.base_font[0], self.base_font[1], "bold")).pack(anchor="w")
+        t = self._section(page, "2. Mode and angle")
         self.mode_var = tk.StringVar(value="explain")
         for key, (name, text) in CE.MODE_HELP.items():
             ttk.Radiobutton(t, text=name, value=key, variable=self.mode_var, style="Card.TRadiobutton",
                             command=self._mode_changed).pack(anchor="w")
             ttk.Label(t, text=text, style="Help.TLabel", wraplength=250, justify="left").pack(anchor="w", padx=(20, 0))
-        ttk.Label(t, text="Angle (one sentence of direction)", style="Card.TLabel").pack(anchor="w", pady=(8, 0))
+        ttk.Label(t, text="Angle (one sentence of direction)", style="Card.TLabel", wraplength=255).pack(anchor="w", pady=(8, 0))
         self.angle_var = tk.StringVar()
         ent = ttk.Entry(t, textvariable=self.angle_var)
         ent.pack(fill="x")
@@ -80,7 +81,7 @@ class StoryPanelsMixin:
         self.char_tree.heading("name", text="Name")
         self.char_tree.heading("voice", text="Voice")
         self.char_tree.column("name", width=90)
-        self.char_tree.column("voice", width=150)
+        self.char_tree.column("voice", width=140)
         self.char_tree.pack(fill="x")
         self.char_tree.bind("<<TreeviewSelect>>", lambda e: self._char_selected())
         self.char_name, self.char_about, self.char_voice = tk.StringVar(), tk.StringVar(), tk.StringVar()
@@ -91,53 +92,110 @@ class StoryPanelsMixin:
                      values=[V.label(v[0]) for v in V.VOICES]).pack(fill="x", pady=2)
         crow = ttk.Frame(self.chars_box, style="Card.TFrame")
         crow.pack(anchor="w")
-        ttk.Button(crow, text="Add / update", command=self.save_character).pack(side="left")
-        ttk.Button(crow, text="Remove", command=self.remove_character).pack(side="left", padx=4)
+        ttk.Button(crow, text="Add / update", width=0, command=self.save_character).pack(side="left")
+        ttk.Button(crow, text="Remove", width=0, command=self.remove_character).pack(side="left", padx=4)
 
-        ttk.Separator(t).pack(fill="x", pady=8)
-        ttk.Label(t, text="Script", style="Card.TLabel", font=(self.base_font[0], self.base_font[1], "bold")).pack(anchor="w")
+        t = self._section(page, "3. Script")
         srow = ttk.Frame(t, style="Card.TFrame")
         srow.pack(anchor="w", pady=(2, 4))
-        ttk.Button(srow, text="Write the script", style="Accent.TButton", command=lambda: self.write_script(False)).pack(side="left")
-        ttk.Button(srow, text="Write again", command=lambda: self.write_script(True)).pack(side="left", padx=4)
-        self.script_tree = ttk.Treeview(t, columns=("when", "who", "text"), show="headings", height=7, selectmode="browse")
-        for c, w, txt in (("when", 48, "At"), ("who", 56, "Who"), ("text", 150, "Line")):
+        ttk.Button(srow, text="Write the script", style="Accent.TButton", command=lambda: self.write_script(False)).pack(anchor="w", pady=1)
+        ttk.Button(srow, text="Write again", width=0, command=lambda: self.write_script(True)).pack(anchor="w", pady=1)
+        self.script_tree = self._scrolled_tree(t, columns=("when", "who", "text"), height=7)
+        for c, w, txt in (("when", 48, "At"), ("who", 56, "Who"), ("text", 130, "Line")):
             self.script_tree.heading(c, text=txt)
             self.script_tree.column(c, width=w, stretch=(c == "text"), anchor="w")
         self.script_tree.tag_configure("bad", foreground="#c92a2a")
-        self.script_tree.pack(fill="x")
         self.script_tree.bind("<<TreeviewSelect>>", lambda e: self._line_selected())
         self.line_text = tk.StringVar()
-        le = ttk.Entry(t, textvariable=self.line_text)
-        le.pack(fill="x", pady=(4, 0))
-        le.bind("<Return>", lambda e: self.save_line_text())
-        le.bind("<FocusOut>", lambda e: self.save_line_text())
+        self._line_editor(t)
         self.line_warn = tk.StringVar()
-        ttk.Label(t, textvariable=self.line_warn, wraplength=270, justify="left",
+        ttk.Label(t, textvariable=self.line_warn, wraplength=255, justify="left",
                   foreground="#c92a2a", background="#ffffff").pack(anchor="w")
         r1 = ttk.Frame(t, style="Card.TFrame")
         r1.pack(anchor="w", pady=2)
-        ttk.Button(r1, text="◀ 0.5 s", width=7, command=lambda: self.nudge_line(-0.5)).pack(side="left")
-        ttk.Button(r1, text="0.5 s ▶", width=7, command=lambda: self.nudge_line(0.5)).pack(side="left", padx=3)
-        ttk.Button(r1, text="Delete line", command=self.delete_line).pack(side="left")
-        ttk.Label(t, text="Rewrite this line (optional note, e.g. funnier, shorter)", style="Help.TLabel").pack(anchor="w")
+        ttk.Button(r1, text="◀ 0.5 s", width=7, command=lambda: self.nudge_line(-0.5)).pack(anchor="w", pady=1)
+        ttk.Button(r1, text="0.5 s ▶", width=7, command=lambda: self.nudge_line(0.5)).pack(anchor="w", pady=1)
+        ttk.Button(r1, text="Delete line", width=0, command=self.delete_line).pack(anchor="w", pady=1)
+        ttk.Label(t, text="Rewrite this line (optional note, e.g. funnier, shorter)", style="Help.TLabel", wraplength=255).pack(anchor="w")
         self.rewrite_note = tk.StringVar()
         ttk.Entry(t, textvariable=self.rewrite_note).pack(fill="x")
         ttk.Button(t, text="Rewrite", command=self.rewrite_line).pack(anchor="w", pady=2)
 
-        ttk.Separator(t).pack(fill="x", pady=8)
-        ttk.Label(t, text="Series memory (story so far, characters, running jokes)", style="Card.TLabel",
-                  font=(self.base_font[0], self.base_font[1], "bold"), wraplength=270).pack(anchor="w")
-        self.series_box = tk.Text(t, height=4, width=30, wrap="word", font=self.base_font)
+        t = self._section(page, "Whole script")
+        ttk.Button(t, text="Open in a big window", width=0, style="Small.TButton",
+                   command=self.open_script_window).pack(anchor="w", pady=(0, 6))
+        self.script_full = tk.StringVar()
+        ttk.Label(t, textvariable=self.script_full, style="Card.TLabel", wraplength=255,
+                  justify="left").pack(anchor="w")
+
+        t = self._section(page, "Series memory", open_=False)
+        ttk.Label(t, text="Story so far, characters, running jokes.", style="Help.TLabel",
+                  wraplength=255).pack(anchor="w")
+        self.series_box = tk.Text(t, height=4, width=10, wrap="word", font=self.base_font)
         self.series_box.pack(fill="x")
         self.series_box.bind("<FocusOut>", lambda e: self._save_series())
         ttk.Button(t, text="Add to series memory", command=self.add_to_series).pack(anchor="w", pady=(3, 0))
         self.series_info = tk.StringVar()
-        ttk.Label(t, textvariable=self.series_info, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
+        ttk.Label(t, textvariable=self.series_info, style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w")
+
+    def _line_editor(self, t):
+        """The picked line in full, over as many rows as it needs."""
+        box = tk.Text(t, height=3, width=10, wrap="word", font=self.base_font, relief="flat", undo=True,
+                      highlightthickness=1, highlightbackground="#d0d5dd", highlightcolor="#e8590c",
+                      padx=6, pady=4)
+        box.pack(fill="x", pady=(6, 0))
+
+        def show(*_):
+            if " ".join(box.get("1.0", "end").split()) != " ".join(self.line_text.get().split()):
+                box.delete("1.0", "end")
+                box.insert("1.0", self.line_text.get())
+
+        def typed(_event=None):
+            self.line_text.set(box.get("1.0", "end").strip())
+
+        def save(_event=None):
+            typed()
+            self.save_line_text()
+            return "break"
+
+        self.line_text.trace_add("write", show)
+        box.bind("<KeyRelease>", typed)
+        box.bind("<Return>", save)
+        box.bind("<FocusOut>", lambda e: (typed(), self.save_line_text()))
+        self.line_box = box
+        ttk.Label(t, text="Edit the words here, then press Enter.", style="Help.TLabel").pack(anchor="w")
+
+    def open_script_window(self):
+        """Every line in full in a resizable window."""
+        win = tk.Toplevel(self.root)
+        win.title("Whole script")
+        win.geometry("640x520")
+        text = tk.Text(win, wrap="word", font=(self.base_font[0], self.base_font[1] + 1), padx=16, pady=14,
+                       spacing3=10)
+        bar = ttk.Scrollbar(win, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        text.pack(side="left", fill="both", expand=True)
+        text.insert("1.0", self.script_full.get())
+        text.configure(state="disabled")
+        return win
+
+    def _scrolled_tree(self, parent, columns, height):
+        """A list with its own scrollbar (the mouse wheel scrolls it, not the page)."""
+        box = ttk.Frame(parent, style="Card.TFrame")
+        box.pack(fill="x")
+        tree = ttk.Treeview(box, columns=columns, show="headings", height=height, selectmode="browse")
+        bar = ttk.Scrollbar(box, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        tree.pack(side="left", fill="x", expand=True)
+        return tree
 
     # ================================================================= Voice tab
     def _build_voice_page(self, t):
         self._heading(t, "Voice", "Free voices for each line. Needs the internet to make them; everything else works without.")
+        page = t
+        t = self._section(page, "Voice, speed and loudness")
         ttk.Label(t, text="Voice for this channel", style="Card.TLabel").pack(anchor="w")
         self.voice_var = tk.StringVar()
         cb = ttk.Combobox(t, textvariable=self.voice_var, state="readonly", values=[v[1] for v in V.VOICES])
@@ -145,41 +203,90 @@ class StoryPanelsMixin:
         cb.bind("<<ComboboxSelected>>", lambda e: self._voice_changed())
         ttk.Button(t, text="Play sample", command=self.play_sample).pack(anchor="w", pady=3)
         self.speed_var, self.pitch_var = tk.IntVar(value=0), tk.IntVar(value=0)
-        for label, var, (lo, hi) in (("Speed (%)", self.speed_var, V.SPEED_LIMITS), ("Pitch (Hz)", self.pitch_var, V.PITCH_LIMITS)):
-            ttk.Label(t, text=label, style="Card.TLabel").pack(anchor="w")
-            s = ttk.Scale(t, from_=lo, to=hi, variable=var, orient="horizontal")
-            s.pack(fill="x")
-            s.bind("<ButtonRelease-1>", lambda e: self._voice_changed())
+        for key, label, var, (lo, hi) in (("speed", "Speed (%)", self.speed_var, V.SPEED_LIMITS),
+                                          ("pitch", "Pitch (Hz)", self.pitch_var, V.PITCH_LIMITS)):
+            self._apply_row(t, key, label, var, lo, hi)
+        self.volume_text = tk.StringVar(value="Voice-over volume: 100 %")
+        ttk.Label(t, textvariable=self.volume_text, style="Card.TLabel").pack(anchor="w")
+        self.volume_var = tk.DoubleVar(value=100)
+        vol = ttk.Scale(t, from_=V.VOLUME_LIMITS[0] * 100, to=V.VOLUME_LIMITS[1] * 100, variable=self.volume_var,
+                        orient="horizontal",
+                        command=lambda value: self.volume_text.set(f"Voice-over volume: {round(float(value))} %"))
+        vol.pack(fill="x")
+        vol.bind("<ButtonRelease-1>", lambda e: self._volume_changed())
+        ttk.Label(t, text="Above 100 % the other sounds turn down while the voice speaks.", style="Help.TLabel",
+                  wraplength=255, justify="left").pack(anchor="w")
         self.voice_info = tk.StringVar()
-        ttk.Label(t, textvariable=self.voice_info, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
-        ttk.Button(t, text="Make voices", style="Accent.TButton", command=self.make_voices).pack(anchor="w", pady=(6, 2))
-        self.voice_tree = ttk.Treeview(t, columns=("n", "voice", "state"), show="headings", height=6, selectmode="browse")
-        for c, w, txt in (("n", 26, "#"), ("voice", 120, "Voice"), ("state", 100, "State")):
+        ttk.Label(t, textvariable=self.voice_info, style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w")
+        t = self._section(page, "Lines")
+        ttk.Button(t, text="Make voices", style="Accent.TButton", command=self.make_voices).pack(anchor="w", pady=(0, 6))
+        self.voice_tree = self._scrolled_tree(t, columns=("n", "voice", "state"), height=6)
+        for c, w, txt in (("n", 26, "#"), ("voice", 105, "Voice"), ("state", 95, "State")):
             self.voice_tree.heading(c, text=txt)
             self.voice_tree.column(c, width=w, stretch=(c == "voice"), anchor="w")
         self.voice_tree.tag_configure("bad", foreground="#c92a2a")
-        self.voice_tree.pack(fill="x")
         self.voice_tree.bind("<<TreeviewSelect>>", lambda e: self._voice_line_selected())
         self.voice_line_info = tk.StringVar()
-        ttk.Label(t, textvariable=self.voice_line_info, wraplength=270, justify="left", foreground="#c92a2a",
+        ttk.Label(t, textvariable=self.voice_line_info, wraplength=255, justify="left", foreground="#c92a2a",
                   background="#ffffff").pack(anchor="w")
+        ttk.Label(t, text="Voice for the picked line", style="Card.TLabel").pack(anchor="w")
+        self.line_voice_var = tk.StringVar(value=AUTO_VOICE)
+        self.line_voice_box = ttk.Combobox(t, textvariable=self.line_voice_var, state="readonly",
+                                           values=[AUTO_VOICE] + [v[1] for v in V.VOICES])
+        self.line_voice_box.pack(fill="x")
+        self.line_voice_box.bind("<<ComboboxSelected>>", lambda e: self._line_voice_changed())
+        ttk.Label(t, text="Automatic = the channel's or character's voice.", style="Help.TLabel",
+                  wraplength=255, justify="left").pack(anchor="w")
         r1 = ttk.Frame(t, style="Card.TFrame")
         r1.pack(anchor="w", pady=2)
-        ttk.Button(r1, text="Play line", command=self.play_line).pack(side="left")
-        self.rec_btn = ttk.Button(r1, text="Record with mic", command=self.toggle_recording)
-        self.rec_btn.pack(side="left", padx=4)
+        ttk.Button(r1, text="Play line", width=0, command=self.play_line).pack(anchor="w", pady=1)
+        self.rec_btn = ttk.Button(r1, text="Record with mic", width=0, command=self.toggle_recording)
+        self.rec_btn.pack(anchor="w", pady=1)
         r2 = ttk.Frame(t, style="Card.TFrame")
         r2.pack(anchor="w", pady=2)
-        ttk.Button(r2, text="Speed up this line", command=self.speed_up_line).pack(side="left")
-        ttk.Button(r2, text="Shorten with Claude", command=self.shorten_line).pack(side="left", padx=4)
-        ttk.Separator(t).pack(fill="x", pady=8)
-        ttk.Label(t, text="Original sound", style="Card.TLabel", font=(self.base_font[0], self.base_font[1], "bold")).pack(anchor="w")
-        ttk.Label(t, style="Help.TLabel", wraplength=270, justify="left",
+        ttk.Button(r2, text="Speed up this line", width=0, command=self.speed_up_line).pack(anchor="w", pady=1)
+        ttk.Button(r2, text="Shorten with Claude", width=0, command=self.shorten_line).pack(anchor="w", pady=1)
+        t = self._section(page, "Original sound")
+        ttk.Label(t, text="Replacing it silences your videos, leaving the voice-over, music and effects.",
+                  style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w")
+        self.mute_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(t, text="Replace it completely", variable=self.mute_var,
+                        style="Card.TCheckbutton", command=self._mute_changed).pack(anchor="w", pady=(0, 6))
+        ttk.Label(t, style="Help.TLabel", wraplength=255, justify="left",
                   text="Explain lowers it under the voice, React keeps it, New story mutes it. "
                        "Set each moment on the Framing tab.").pack(anchor="w")
         self.talk_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(t, text="Keep game sounds, remove talking", variable=self.talk_var,
+        ttk.Checkbutton(t, text="Keep game sounds,\nremove talking", variable=self.talk_var,
                         command=self._talk_changed).pack(anchor="w", pady=3)
+
+    def _apply_row(self, t, key: str, label: str, var, lo: int, hi: int):
+        """A slider that changes nothing until its Apply button is pressed."""
+        shown = tk.StringVar()
+        ttk.Label(t, textvariable=shown, style="Card.TLabel").pack(anchor="w", pady=(6, 0))
+        var.trace_add("write", lambda *_: shown.set(f"{label}: {var.get():+d}"))
+        shown.set(f"{label}: +0")
+        row = ttk.Frame(t, style="Card.TFrame")
+        row.pack(fill="x")
+        ttk.Button(row, text=f"Apply {key}", width=0, style="Small.TButton",
+                   command=lambda: self.apply_voice_setting(key)).pack(side="right", padx=(6, 0))
+        ttk.Scale(row, from_=lo, to=hi, variable=var, orient="horizontal",
+                  command=lambda v: var.set(int(round(float(v))))).pack(side="left", fill="x", expand=True)
+
+    def apply_voice_setting(self, key: str):
+        """Apply only the speed, or only the pitch, to every made voice. One Undo takes it back."""
+        value = int(round((self.speed_var if key == "speed" else self.pitch_var).get()))
+        if any(l.get("audio") and not l.get("recorded") for l in S.visible(self.project)):
+            self.make_voices(change={key: value})
+            return
+        self._change_voice_setting(self.project, {key: value})
+        self.commit(f"{key.capitalize()} set to {value:+d}. Press Make voices to hear it.")
+
+    @staticmethod
+    def _change_voice_setting(project, change: dict):
+        project.voices = dict(project.voices or {}, **change)
+        if "speed" in change:       # a new speed replaces "Speed up this line" on single lines
+            for ln in project.script_lines:
+                ln.pop("speed", None)
 
     # ======================================================== original sound slider (Framing tab)
     def _build_original_level(self, t):
@@ -189,7 +296,7 @@ class StoryPanelsMixin:
         s.pack(fill="x")
         s.bind("<ButtonRelease-1>", lambda e: self._level_changed())
         self.level_info = tk.StringVar()
-        ttk.Label(t, textvariable=self.level_info, style="Help.TLabel", wraplength=270, justify="left").pack(anchor="w")
+        ttk.Label(t, textvariable=self.level_info, style="Help.TLabel", wraplength=255, justify="left").pack(anchor="w")
 
     def _refresh_original_level(self, seg):
         from clipping.editor import render
@@ -227,9 +334,12 @@ class StoryPanelsMixin:
             self.watch_info.set(f"{len(scenes)} scenes, {stars} starred (★ = likely to go viral). "
                                 "Pick one and press Add to cut.")
         # characters
+        picked = self.char_tree.selection()
         self.char_tree.delete(*self.char_tree.get_children())
         for k, c in enumerate(V.settings(pr)["characters"]):
             self.char_tree.insert("", "end", iid=f"ch{k}", values=(c.get("name", ""), V.label(c.get("voice") or V.settings(pr)["default"])))
+        if picked and self.char_tree.exists(picked[0]):
+            self.char_tree.selection_set(picked[0])
         if pr.mode == "new_story":
             self.chars_box.pack(fill="x", after=self.angle_buttons)
         else:
@@ -241,6 +351,8 @@ class StoryPanelsMixin:
         for ln in S.visible(pr):
             self.script_tree.insert("", "end", iid=ln["id"], tags=("bad",) if ln["id"] in warn else (),
                                     values=(timeline.format_time(ln["start"], True), ln["character"] or "—", ln["text"]))
+        self.script_full.set("\n\n".join(f"{timeline.format_time(l['start'], True)}  {l['text']}"
+                                          for l in S.visible(pr)) or "No script yet.")
         if keep and self.script_tree.exists(keep):
             self.script_tree.selection_set(keep)
         # voice tab
@@ -249,6 +361,9 @@ class StoryPanelsMixin:
         self.speed_var.set(cfg["speed"])
         self.pitch_var.set(cfg["pitch"])
         self.talk_var.set(bool((pr.voices or {}).get("remove_talking")))
+        self.mute_var.set(bool((pr.voices or {}).get("mute_original")))
+        self.volume_var.set(round(cfg["volume"] * 100))
+        self.volume_text.set(f"Voice-over volume: {round(cfg['volume'] * 100)} %")
         made = sum(1 for l in S.visible(pr) if l.get("audio"))
         self.voice_info.set(f"{made} of {len(S.visible(pr))} lines have a voice. "
                             f"Language: {'Swahili' if V.language_of(cfg['default']) == 'sw' else 'English'}.")
@@ -262,6 +377,9 @@ class StoryPanelsMixin:
                 state = "not made yet"
             self.voice_tree.insert("", "end", iid="v_" + ln["id"], tags=("bad",) if ln["id"] in warn else (),
                                    values=(n, "your mic" if ln.get("recorded") else V.label(V.voice_for(pr, ln)).split(" · ")[0], state))
+        if keep and self.voice_tree.exists("v_" + keep):
+            self.voice_tree.selection_set("v_" + keep)
+        self._show_line_voice(keep)
         self._refresh_series()
 
     def _selected_line_id(self):
@@ -294,8 +412,34 @@ class StoryPanelsMixin:
         except KeyError:
             return
         self.voice_line_info.set(S.warning_for(self.project, lid))
+        self._show_line_voice(lid)
         if self.script_tree.exists(lid):
             self.script_tree.selection_set(lid)
+
+    def _show_line_voice(self, line_id):
+        ln = next((l for l in self.project.script_lines if l["id"] == line_id), None)
+        own = ln.get("voice") if ln else ""
+        self.line_voice_var.set(V.label(own) if own else AUTO_VOICE)
+
+    def _line_voice_changed(self):
+        ln = self._line_or_none()
+        if ln is None:
+            self.line_voice_var.set(AUTO_VOICE)
+            return
+        picked = self.line_voice_var.get()
+        was_mic = ln.get("recorded")
+        if not V.set_line_voice(ln, "" if picked == AUTO_VOICE else self._voice_id_from_label(picked)):
+            return
+        self._story_changed()
+        self.commit("This line's voice changed. Make voices to hear it."
+                    + (" Your recording was taken off it (Undo brings it back)." if was_mic else ""))
+
+    def _volume_changed(self):
+        volume = round(self.volume_var.get() / 100.0, 2)
+        if volume == V.settings(self.project)["volume"]:
+            return
+        self._set_voices(volume=volume)
+        self.commit(f"Voice-over volume {round(volume * 100)} %.")
 
     def select_line(self, line_id: str):
         """Called when a block in the Voice-over lane is clicked."""
@@ -365,7 +509,7 @@ class StoryPanelsMixin:
 
     def _scene_selected(self):
         s = self._selected_scene()
-        self.scene_why.set(f"{s['who']} · {s['mood']}. {s['why']}" if s else "")
+        self.scene_why.set(f"{s['what_happens']}\n{s['who']} · {s['mood']}. {s['why']}" if s else "")
         if s and self.watch.get() == "source":
             self.player.seek(s["start"])
 
@@ -375,7 +519,8 @@ class StoryPanelsMixin:
             self.status("Pick a scene in the list first.")
             return
         seg = self.project.add_segment(s["source_id"], s["start"], s["end"])
-        self.commit(f"Added the scene to your cut (moment {len(self.project.segments)}).", keep_selection=seg.id)
+        note = self._whole_clip_note(seg.source_id)
+        self.commit(f"Added the scene to your cut (moment {len(self.project.segments)}).{note}", keep_selection=seg.id)
 
     def add_starred_to_cut(self):
         stars = CE.stars_from([s for s in self.project.scene_log if s.get("source_id") == self.current_source_id])
@@ -384,7 +529,8 @@ class StoryPanelsMixin:
             return
         for s in stars:
             self.project.add_segment(s["source_id"], s["start"], s["end"])
-        self.commit(f"Added {len(stars)} starred scene(s) to your cut.")
+        note = self._whole_clip_note(self.current_source_id)
+        self.commit(f"Added {len(stars)} starred scene(s) to your cut.{note}")
 
     # ================================================================= mode, angle, characters
     def _mode_changed(self):
@@ -415,7 +561,9 @@ class StoryPanelsMixin:
             for w in self.angle_buttons.winfo_children():
                 w.destroy()
             for a in angles:
-                ttk.Button(self.angle_buttons, text=a, command=lambda a=a: self._use_angle(a)).pack(fill="x", pady=1)
+                tk.Button(self.angle_buttons, text=a, command=lambda a=a: self._use_angle(a), wraplength=250,
+                          justify="left", anchor="w", font=self.base_font, background="#ffffff",
+                          relief="solid", borderwidth=1, padx=6, pady=4).pack(fill="x", pady=2)
             self.status("Click an angle to use it, or write your own.")
 
         self.run_job("Claude is thinking of three angles…", work, done)
@@ -448,11 +596,16 @@ class StoryPanelsMixin:
         self.commit(f"Saved {name}.")
 
     def remove_character(self):
-        sel = self.char_tree.selection()
-        if not sel:
-            return
         chars = V.settings(self.project)["characters"]
-        gone = chars.pop(int(sel[0][2:]))
+        sel = self.char_tree.selection()
+        name = self.char_name.get().strip().lower()
+        k = int(sel[0][2:]) if sel else next((i for i, c in enumerate(chars) if c.get("name", "").lower() == name), None)
+        if k is None or k >= len(chars):
+            self.status("Click the character in the list first, then press Remove.")
+            return
+        gone = chars.pop(k)
+        self.char_name.set("")
+        self.char_about.set("")
         self._set_voices(characters=chars)
         self.commit(f"Removed {gone.get('name', 'the character')}.")
 
@@ -626,18 +779,27 @@ class StoryPanelsMixin:
 
     # ================================================================= voices
     def _voice_changed(self):
-        self._set_voices(default=self._voice_id_from_label(self.voice_var.get()),
-                         speed=int(round(self.speed_var.get())), pitch=int(round(self.pitch_var.get())))
+        self._set_voices(default=self._voice_id_from_label(self.voice_var.get()))
         self.commit("Voice settings changed. Make voices again to use them.")
 
     def _talk_changed(self):
         on = bool(self.talk_var.get())
         self._set_voices(remove_talking=("centre" if on else ""))
+        if on:
+            self._set_voices(mute_original=False)
         if on:  # a muted moment has no talking to remove, so bring the game sounds back
             for seg in self.project.segments:
-                if seg.original_level is None and self.project.mode == "new_story":
+                if seg.original_level is None and not seg.reaction and self.project.mode == "new_story":
                     seg.original_level = 1.0
         self.commit("Keeping the game sounds and removing the talking." if on else "Original sound left as it was.")
+
+    def _mute_changed(self):
+        on = bool(self.mute_var.get())
+        self._set_voices(mute_original=on)
+        if on:
+            self._set_voices(remove_talking="")
+        self.commit("The original sound is replaced: only your voice-over, music and effects are heard."
+                    if on else "The original sound is back.")
 
     def _play_file(self, path: str):
         for cmd in (["mpv", "--no-video", "--really-quiet", path], ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path]):
@@ -657,13 +819,15 @@ class StoryPanelsMixin:
 
         self.run_job("Making a sample of the voice…", work, lambda path: (self._play_file(path), self.status("Playing the sample.")))
 
-    def make_voices(self):
+    def make_voices(self, change: dict | None = None):
         if not S.visible(self.project):
             messagebox.showinfo(self.APP_NAME, "There is no script yet. Press Write the script on the Story tab first.")
             return
         if not self._check_free():
             return
         snapshot, folder = self._snapshot(), self.ensure_folder()
+        if change:
+            self._change_voice_setting(snapshot, change)
 
         def work(progress):
             import time
@@ -674,6 +838,8 @@ class StoryPanelsMixin:
         def done(out):
             snap, result, took = out
             mine = {l["id"]: l for l in snap.script_lines}
+            if change and not result["failed"]:     # setting and new audio together: one Undo step
+                self._change_voice_setting(self.project, change)
             for ln in self.project.script_lines:
                 got = mine.get(ln["id"])
                 if got and got.get("audio") and got.get("text") == ln.get("text"):
@@ -691,6 +857,9 @@ class StoryPanelsMixin:
     def speed_up_line(self):
         ln = self._line_or_none()
         if ln is None:
+            return
+        if ln.get("recorded"):
+            self.status("This is your own recording. Record it again, faster, or pick a voice for the line.")
             return
         room = self._room(ln)
         pct = V.fit_speed(self.project, ln, room)

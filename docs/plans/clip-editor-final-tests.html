@@ -1,0 +1,109 @@
+<title>Clip Editor Final Tests</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap">
+<style>
+/* Layout: one column checklist, sticky tally on top, grouped by phase. Same look as the phase test pages. */
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#5d6779;--line:#dde1e8;--accent:#c2410c;--pass:#18794e;--fail:#c0262d;--on:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 Inter,system-ui,sans-serif;padding-block:0 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:760px;margin:0 auto}
+h1,h2{font-family:"Space Grotesk",Inter,sans-serif;text-wrap:balance}
+h1{font-size:28px;margin:24px 0 4px}
+h2{font-size:18px;margin:28px 0 4px}
+p{margin:4px 0 8px;color:var(--muted)}
+code{overflow-wrap:anywhere;color:var(--fg);font-size:13px}
+#bar{position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;z-index:2;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:4px 16px}
+#save{color:var(--muted)}#save.err{color:var(--fail)}
+.t{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 8px}
+.t b{color:var(--accent);font-variant-numeric:tabular-nums}
+.exp{color:var(--muted)}
+.ctl{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+button{font:600 13px Inter,sans-serif;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:6px 14px;cursor:pointer}
+button.p[aria-pressed="true"]{background:var(--pass);border-color:var(--pass);color:var(--on)}
+button.f[aria-pressed="true"]{background:var(--fail);border-color:var(--fail);color:var(--on)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input{flex:1 1 200px;min-width:0;font:inherit;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button:disabled,input:disabled{opacity:.5;cursor:default}
+</style>
+<main>
+<h1>Clip Editor: final tests</h1>
+<p>Everything still to be tested, to run at the end of testing. Numbers are phase.test, matching the phase pages. Tests from later phases will be added here.</p>
+<p>Close and reopen Clip Editor before you start. Test video: <code>outputs/video_asli.mp4</code></p>
+<div id="bar"><span id="tally"></span><span id="save" role="status">Loading your saved marks…</span></div>
+<div id="list"></div>
+</main>
+<script>
+// Add later phases as new groups. Ids are the saved keys: never renumber an existing one.
+const GROUPS=[
+["Phase 1: saving and export","Not run yet. Use the Phase 1 test edit.",[
+["1.28","Close the app and reopen it","Your edit comes back as you left it"],
+["1.29","Change the name and channel, press New, then Open… the test edit's project.json in My Edits","Everything is restored"],
+["1.30","Start Export, then press Stop (a checks warning may appear first)","It stops and the window stays usable"],
+["1.31","Export again and let it finish","A 1080×1920 video with sound in Clipping/Ready to post, matching the preview"],
+["1.32","On the Export tab, use Open Ready to post and Change…","The folder opens, and you can pick another"]]],
+["Phase 2: export","Held until all phases are tested.",[
+["2.27","Add text on the cover, a title, description and hashtags, then press Export straight away","YouTube.txt has exactly what you typed, and cover.jpg shows your frame and cover text"],
+["2.28","Watch the exported video","Captions, hook and pop-ups look and are timed like the preview"],
+["2.29","Open the export folder","It has the video, cover.jpg, captions.srt and YouTube.txt"]]],
+["Phase 1: retests after fixes","The fix log lists these as fixed or to be tried again. No retest is recorded.",[
+["1.2","Use Add video… to add a second video, then click between the two","Both stay listed and the player switches to the one you clicked"],
+["1.3","Add a moment from the second video, play it, then Remove video","Playback stops at the moment's end; removing asks first, then removes the video and its moments"],
+["1.5","Click outside any text box, press Space, ← and →, then drag the slider","Space plays and pauses, arrows jump 1 second, scrubbing works"],
+["1.7","While playing, press I, wait, press O. Then Remove that video","The moment is added, and the player empties on removal"],
+["1.18","Click each moment in the cut list","Start and end times are readable in full"],
+["1.19","Type a moment that ends past the video's length and press Add","It is refused, with the video's length shown"],
+["1.21","On a wide video, switch to My cut (9:16) and choose Follow the people","Crop centres on faces, or on the middle if none are found"],
+["1.22","Choose Crop, I choose the position, and move Left ↔ right","The visible area moves"],
+["1.23","Choose Whole picture, blurred behind","The full picture shows over a blurred background"],
+["1.24","Use Zoom in, then Up ↕ down in crop mode","Picture enlarges and can move vertically"],
+["1.26","Press Use for every moment","All moments get the same framing"],
+["1.F1","Open… a video, then a text file, then a real project.json","The video starts a new edit, the text file says it isn't a saved edit, the project opens"]]]
+];
+
+const list=document.getElementById('list'),save=document.getElementById('save'),tally=document.getElementById('tally');
+const rows={},state={},queue={};
+let db=null;
+const say=(t,err)=>{save.textContent=t;save.className=err?'err':''};
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e};
+for(const [name,about,tests] of GROUPS){
+  list.append(el('h2','',name),el('p','',about));
+  for(const [num,act,exp] of tests){
+    const id='p'+num.replace('.','-');
+    state[id]={status:'',note:''};
+    const box=el('div','t'),body=el('div'),ctl=el('div','ctl');
+    body.append(el('div','',act),el('div','exp','Pass if: '+exp));
+    const p=el('button','p','Pass'),f=el('button','f','Fail'),note=el('input');
+    note.id='note-'+id;note.placeholder='What did you see?';note.setAttribute('aria-label','Note for test '+num);
+    for(const [b,v] of [[p,'pass'],[f,'fail']]){b.type='button';b.disabled=true;b.onclick=()=>{state[id].status=state[id].status===v?'':v;paint(id);write(id)}}
+    note.disabled=true;note.onchange=()=>{state[id].note=note.value;write(id)};
+    ctl.append(p,f,note);box.append(el('b','',num),body,ctl);list.append(box);
+    rows[id]={p,f,note};
+  }
+}
+function paint(id){
+  const r=rows[id],s=state[id];
+  r.p.setAttribute('aria-pressed',s.status==='pass');r.f.setAttribute('aria-pressed',s.status==='fail');
+  if(document.activeElement!==r.note)r.note.value=s.note;
+  const all=Object.values(state),pass=all.filter(x=>x.status==='pass').length,fail=all.filter(x=>x.status==='fail').length;
+  tally.textContent=`${pass} passed · ${fail} failed · ${all.length-pass-fail} to do`;
+}
+function write(id){
+  say('Saving…');
+  const data={status:state[id].status,note:state[id].note,at:Date.now()};
+  queue[id]=(queue[id]||Promise.resolve()).then(()=>db.collection('results').doc(id).set(data))
+    .then(()=>say('Saved'),e=>say('Not saved ('+((e&&e.code)||'unknown')+'). Mark it again, or tell Claude in the terminal.',true));
+}
+Object.keys(rows).forEach(paint);
+(async()=>{
+  const timer=setTimeout(()=>say('Saved marks did not load. Open this page signed in to claude.ai.',true),10000);
+  try{db=await claude.use('db')}catch(e){}
+  if(!db){clearTimeout(timer);say('Marks cannot be saved in this view. Open this page signed in to claude.ai.',true);return}
+  db.collection('results').onSnapshot(snap=>{
+    clearTimeout(timer);
+    snap.docs.forEach(d=>{if(state[d.id]){const v=d.data();state[d.id]={status:v.status||'',note:v.note||''};paint(d.id)}});
+    Object.values(rows).forEach(r=>r.p.disabled=r.f.disabled=r.note.disabled=false);
+    say('Saved');
+  },e=>{clearTimeout(timer);say('Could not load your marks ('+((e&&e.code)||'unknown')+').',true)});
+})();
+</script>

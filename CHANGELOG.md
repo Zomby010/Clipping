@@ -10,6 +10,60 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 
 ## [Unreleased]
 
+### Added
+- Clip Editor, **reactions inside your cut**: put a reaction (video, GIF or picture) in at any point of My cut. The moment there is split, the reaction plays in between, and the video gets longer by its length. Move it, make it shorter or longer, or delete it (the split halves join again).
+- Clip Editor **Reactions** tab: thumbnail picker by mood, **★ Favourites**, **Play**, **Add your own…**. Pictures and GIFs in `assets/reactions/` are now listed, not only videos.
+- Clip Editor: **Replace it completely** silences the original sound; **Use my own picture…** for the cover; **Open in a big window** shows the whole script.
+- Clip Editor layout: draggable columns with a wider tool panel, folding sections, text that wraps to the panel, and the timeline always on screen. The smallest window is now 1060x680.
+- Clip Editor, **Voice** tab: pick a voice for a single line, and set the voice-over volume (0 to 200 %).
+
+### Fixed
+- Clip Editor, from the 28 November 2026 test notes:
+  - **Voice-over volume** now makes an audible difference. Above 100 % the other sounds turn down while the voice speaks.
+  - Speed and pitch have their own **Apply speed** and **Apply pitch** buttons, each undone with one Undo.
+  - **Remove** (character) works from the list or the name box.
+  - A mic recording that is almost silent is refused with advice on the computer's input device; good ones are levelled so they can be heard.
+  - **Make captions** offers the script in every mode.
+  - Script lines no longer start with `{"text": ...`; older edits are cleaned when opened.
+  - The picked line is edited in a box that wraps.
+  - The hook can last longer than 4 seconds, up to the whole video.
+- Clip Editor, from the phase 2 retests and phase 3 hands-on test (27 November 2026):
+  - A hook made only of emoji now moves (Pop, Bounce, Slide down, Shake) and gets the box. Changing the hook while watching My cut replays it.
+  - The hook box can be any colour (**Colour…**); the words turn black on a light box.
+  - The Story and Voice lists have scrollbars and the mouse wheel scrolls the list, not the page. Angles and the whole script are shown in full.
+  - **Export** tab shows the cover picture, with ◀ / ▶ to change its frame.
+  - The timeline has an **Original video** lane (click it to go there) above a **Moments** lane.
+  - **Make captions** switches to My cut, where the captions are drawn.
+  - **Speed up this line** no longer silences a line you recorded yourself.
+  - My cut now says when script lines have no voice yet, instead of playing silently without a word.
+  - Changing the words of a line you recorded with the mic no longer leaves it silent: **Make voices** speaks it again (or record it again).
+- Clip Editor, from the phase 2 hands-on test (27 November 2026):
+  - A clip opened from My Clips starts with one whole-clip moment. Adding your own moments from that video now takes it out (Undo brings it back), so your cut is only what you picked. A whole-clip moment you trimmed or split is kept.
+  - My cut stops at the end of each moment (**Stop after each moment**, on by default). The player says **ORIGINAL VIDEO** or **YOUR CUT · moment N of M**.
+  - **Move up** / **Move down**, also Alt+↑ / Alt+↓. Button labels that were cut off now fit.
+  - **Make captions** only listens to moments that have none yet and keeps your fixes on the rest. It warns when the clip already has captions in the picture. The caption list is taller, scrolls on its own and shows the moment number.
+  - The emoji menu shows colour pictures.
+  - Hook line: **Movement** (Pop, Bounce, Slide down, Shake) and an optional orange box.
+- Clip Editor, from the phase 1 hands-on test (26 November 2026):
+  - **Open…** on a video now starts a new edit with it (a Clipping Studio clip brings its upload details). Any other file shows "That isn't a saved edit" instead of a technical error.
+  - In **The video I'm cutting from**, playing a selected moment stops at its end. Play again replays it; outside the moment the video plays freely.
+  - A typed moment that lies outside the video is refused with the video's length, and nothing from that line is added.
+  - Removing the last video empties the player.
+  - **My cut** now shows the selected moment after the preview is remade, instead of jumping to the start.
+  - **Space** plays and pauses even when a button has focus.
+  - Framing: the position sliders are greyed out when they can't change the picture, with a note for videos that are already 9:16.
+  - Cut list: From, To and Length come first and are shown in full, with the selected moment written out under the list.
+
+### Added
+- **Joined videos** (`--join`, "Join links into one story" in Clipping Studio, on by default there): two or more links become one video, so a clip can use moments from all of them. In story angles, `V2 11:40` means 11:40 in the second link. Videos that differ in size or format are converted first.
+- **Storyline cuts** (`--storyline-cuts`, "Follow my story times"; always on when joining): the clip picker now sees your story angles, and one clip can use moments from anywhere, in story order. Not supported with the self-hosted vLLM provider.
+- Clipping Studio main screen: drop-downs for subtitles (Whisper or the video's own), download quality and Whisper model.
+- Clipping Studio **Story angles**: more than one story direction. Add as many angle boxes as you like (up to 8, **+ Add angle**) next to the Story direction box; the new `--story-angles` option takes the same list for the command line. Each Short is told through its own angle, spread over the Shorts in order (a Short can get more than one when there are more angles than Shorts, so no angle is dropped). Series mode stays one continuing story with each part leaning into its angle. The angle for each part is saved in `Storyline.txt`. The Story direction box still works as the overall direction.
+- Clip Editor **Voice** tab and Clipping Studio **Voice** setting: the voice pickers now list the most popular free voices on Shorts first (Guy, Aria, Jenny, Brian, Andrew, Christopher, Ava, Ryan, Sonia and more, including the "Multilingual" variants), so you can pick a voice you already know. All are free edge-tts voices. The Kenyan, Nigerian and Swahili voices and each channel's default voice are unchanged.
+
+### Fixed
+- A video saved from an earlier link could be reused for a new link. Saved files are now tied to their link(s) and download quality and deleted when these differ; a saved AI answer is only reused for the same link(s).
+
 ### Changed
 - Everything you see while the tool runs is now in English: progress messages, warnings and errors in the clipping pipeline, providers and render steps.
 - The AI instructions (clip picking and voice-over script) are now written in English, and all titles, captions and descriptions are requested in English for an English-speaking African and worldwide audience. Field names in the JSON stay the same.

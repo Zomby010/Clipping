@@ -26,6 +26,7 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk, filedialog
 
 from clipping.gui import settings as S
+from clipping.story import MAX_ANGLES as MAX_STORY_ANGLES, parse_angles as S_angles
 
 APP_NAME = "Clipping Studio"
 MAX_LOG_LINES = 3000
@@ -42,6 +43,12 @@ COLORS = {
     "log_bg": "#10141c",
     "log_fg": "#d7dde8",
 }
+
+
+# Label -> value of "use the video's own subtitles". Whisper is used if the video has none.
+SUBTITLE_SOURCES = {"Make my own (Whisper)": False, "Use the video's subtitles": True}
+DOWNLOAD_HEIGHTS = ["max", "2160", "1440", "1080", "720"]
+WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
 
 
 class ScrollFrame(ttk.Frame):
@@ -154,6 +161,101 @@ class StudioApp:
             else:
                 self.vars[f.dest] = tk.StringVar(value="" if value is None else str(value))
 
+    # ---- story angles: a small window with one box per angle, feeding the "story_angles" setting
+    ANGLE_BOXES_START = 2
+
+    def _refresh_angles_button(self):
+        n = len(S_angles(self.vars["story_angles"].get()))
+        self.angles_btn.configure(text=f"Story angles ({n})…" if n else "Story angles…")
+
+    def _open_angles_dialog(self):
+        if self._angles_dialog is not None and self._angles_dialog.winfo_exists():
+            self._angles_dialog.lift()
+            return
+        win = tk.Toplevel(self.root)
+        self._angles_dialog = win
+        win.title("Story angles")
+        win.transient(self.root)
+        win.configure(background=COLORS["bg"])
+        win.minsize(560, 200)
+        box = ttk.Frame(win, style="Card.TFrame", padding=12)
+        box.pack(fill="both", expand=True)
+        ttk.Label(box, text="Each video follows its own angle, spread over the clips in order. "
+                            "Add as many angles as you like (up to %d). Empty boxes are ignored." % MAX_STORY_ANGLES,
+                  style="Help.TLabel", wraplength=520, justify="left").pack(anchor="w", pady=(0, 6))
+        self.angle_list = ttk.Frame(box, style="Card.TFrame")
+        self.angle_list.pack(fill="x")
+        foot = ttk.Frame(box, style="Card.TFrame")
+        foot.pack(fill="x", pady=(8, 0))
+        self.add_angle_btn = ttk.Button(foot, text="+ Add angle", command=self._add_angle_box)
+        self.add_angle_btn.pack(side="left")
+        ttk.Button(foot, text="Done", style="Accent.TButton", command=self._close_angles_dialog).pack(side="right")
+        win.protocol("WM_DELETE_WINDOW", self._close_angles_dialog)
+        self._rebuild_angle_boxes(S_angles(self.vars["story_angles"].get()))
+
+    def _close_angles_dialog(self):
+        if self._angles_dialog is not None:
+            self._angles_dialog.destroy()
+        self._angles_dialog = None
+        self._angle_rows = []
+
+    def _angles_dialog_open(self) -> bool:
+        return self._angles_dialog is not None and self._angles_dialog.winfo_exists()
+
+    def _angles_var_changed(self):
+        """The setting changed (box edited, profile loaded, reset): keep button and boxes in step."""
+        self._refresh_angles_button()
+        if self._angles_syncing or not self._angles_dialog_open():
+            return
+        if S_angles(self.vars["story_angles"].get()) != self._angle_values():
+            self._rebuild_angle_boxes(S_angles(self.vars["story_angles"].get()))
+
+    def _angle_values(self) -> list[str]:
+        return S_angles([var.get() for _row, var in self._angle_rows])
+
+    def _angle_box_edited(self):
+        self._angles_syncing = True
+        try:
+            self.vars["story_angles"].set("\n".join(self._angle_values()))
+        finally:
+            self._angles_syncing = False
+
+    def _rebuild_angle_boxes(self, values: list[str]):
+        for row, _var in self._angle_rows:
+            row.destroy()
+        self._angle_rows = []
+        for i in range(max(len(values), self.ANGLE_BOXES_START)):
+            self._add_angle_box(values[i] if i < len(values) else "", edited=False)
+
+    def _add_angle_box(self, text: str = "", edited: bool = True):
+        if len(self._angle_rows) >= MAX_STORY_ANGLES:
+            return
+        row = ttk.Frame(self.angle_list, style="Card.TFrame")
+        row.pack(fill="x", pady=1)
+        var = tk.StringVar(value=text if isinstance(text, str) else "")
+        n = len(self._angle_rows) + 1
+        ttk.Label(row, text=f"Angle {n}", style="Card.TLabel", width=8).pack(side="left")
+        ttk.Entry(row, textvariable=var).pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="✕", width=3, command=lambda r=row: self._remove_angle_box(r)).pack(side="left", padx=(4, 0))
+        var.trace_add("write", lambda *a: self._angle_box_edited())
+        self._angle_rows.append((row, var))
+        self._angle_buttons_state()
+        if edited:
+            self._angle_box_edited()
+
+    def _remove_angle_box(self, row):
+        self._angle_rows = [(r, v) for r, v in self._angle_rows if r is not row]
+        row.destroy()
+        for i, (r, _v) in enumerate(self._angle_rows, 1):
+            r.winfo_children()[0].configure(text=f"Angle {i}")
+        if not self._angle_rows:
+            self._add_angle_box(edited=False)
+        self._angle_buttons_state()
+        self._angle_box_edited()
+
+    def _angle_buttons_state(self):
+        self.add_angle_btn.configure(state="normal" if len(self._angle_rows) < MAX_STORY_ANGLES else "disabled")
+
     def current_values(self) -> dict:
         out = {}
         for dest, var in self.vars.items():
@@ -196,7 +298,7 @@ class StudioApp:
         ttk.Button(prof, text="Save as…", command=self.save_profile).pack(side="left", padx=(6, 0))
         ttk.Button(prof, text="Delete", command=self.delete_profile).pack(side="left", padx=(6, 0))
 
-        ttk.Label(t, text="Paste video links (one per line). Every setting is under 'All settings'.",
+        ttk.Label(t, text="Paste video links (one per line). In story angles, 'V2 11:40' means 11:40 in the second link.",
                   style="Sub.TLabel").pack(anchor="w", pady=(4, 8))
 
         links_card = ttk.Frame(t, style="Card.TFrame", padding=10)
@@ -209,14 +311,14 @@ class StudioApp:
         if saved_links:
             self.links.insert("1.0", saved_links)
 
-        quick = ttk.LabelFrame(t, text="Quick choices", style="Card.TLabelframe", padding=12)
-        quick.pack(fill="x", pady=10)
+        quick = ttk.LabelFrame(t, text="Quick choices", style="Card.TLabelframe", padding=6)
+        quick.pack(fill="x", pady=4)
         for c in range(4):
             quick.columnconfigure(c, weight=1)
 
         def cell(row, col, label, widget_factory):
             box = ttk.Frame(quick, style="Card.TFrame")
-            box.grid(row=row, column=col, sticky="ew", padx=6, pady=5)
+            box.grid(row=row, column=col, sticky="ew", padx=6, pady=1)
             ttk.Label(box, text=label, style="Card.TLabel").pack(anchor="w")
             w = widget_factory(box)
             w.pack(fill="x", pady=(2, 0))
@@ -256,13 +358,36 @@ class StudioApp:
             p, textvariable=self.vars["story_mode"], state="readonly",
             values=self.by_dest["story_mode"].choices))
         brief_box = ttk.Frame(quick, style="Card.TFrame")
-        brief_box.grid(row=2, column=1, columnspan=3, sticky="ew", padx=6, pady=5)
-        ttk.Label(brief_box, text="Story direction (optional: who, what, the angle)",
+        brief_box.grid(row=2, column=1, columnspan=3, sticky="ew", padx=6, pady=1)
+        ttk.Label(brief_box, text="Story direction (optional: who and what, the overall tone)",
                   style="Card.TLabel").pack(anchor="w")
-        ttk.Entry(brief_box, textvariable=self.vars["story_brief"]).pack(fill="x", pady=(2, 0))
+        line = ttk.Frame(brief_box, style="Card.TFrame")
+        line.pack(fill="x", pady=(2, 0))
+        self.angles_btn = ttk.Button(line, command=self._open_angles_dialog)
+        self.angles_btn.pack(side="right", padx=(6, 0))
+        ttk.Entry(line, textvariable=self.vars["story_brief"]).pack(side="left", fill="x", expand=True)
+        self._angles_dialog = None
+        self._angle_rows: list[tuple[ttk.Frame, tk.StringVar]] = []
+        self._angles_syncing = False
+        self.vars["story_angles"].trace_add("write", lambda *a: self._angles_var_changed())
+        self._refresh_angles_button()
+
+        words = cell(3, 0, "Subtitles (the words)", lambda p: ttk.Combobox(
+            p, state="readonly", values=list(SUBTITLE_SOURCES)))
+        self._follow(words, "use_dlp_subs", SUBTITLE_SOURCES)
+        cell(3, 1, "Download quality (max height)", lambda p: ttk.Combobox(
+            p, textvariable=self.vars["source_height"], state="readonly", values=DOWNLOAD_HEIGHTS))
+        cell(3, 2, "Whisper model", lambda p: ttk.Combobox(
+            p, textvariable=self.vars["whisper_model"], values=WHISPER_MODELS))
+
+        links_box = ttk.Frame(quick, style="Card.TFrame")
+        links_box.grid(row=3, column=3, sticky="sw", padx=6)
+        for dest in ("join", "storyline_cuts"):
+            ttk.Checkbutton(links_box, text=self.by_dest[dest].label, variable=self.vars[dest],
+                            style="Card.TCheckbutton").pack(anchor="w")
 
         checks = ttk.Frame(quick, style="Card.TFrame")
-        checks.grid(row=3, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
+        checks.grid(row=4, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 0))
         for i, dest in enumerate(("voiceover", "no_reactions", "no_bgm", "no_subs",
                                   "no_broll", "no_hook", "watermark", "cleanup_source")):
             ttk.Checkbutton(checks, text=self.by_dest[dest].label, variable=self.vars[dest],
@@ -300,6 +425,17 @@ class StudioApp:
         self.log.configure(yscrollcommand=bar.set, state="disabled")
         self.log.pack(side="left", fill="both", expand=True)
         bar.pack(side="right", fill="y")
+
+    def _follow(self, box, dest: str, choices: dict):
+        """Keep a drop-down with friendly names in step with a setting."""
+        var = self.vars[dest]
+
+        def show(*_):
+            box.set(next(name for name, value in choices.items() if value == bool(var.get())))
+
+        box.bind("<<ComboboxSelected>>", lambda e: var.set(choices[box.get()]))
+        var.trace_add("write", show)
+        show()
 
     def _sync_length_choice(self):
         if not hasattr(self, "length_var"):
@@ -629,17 +765,26 @@ class StudioApp:
         self.root.after(120, self._drain_log)
 
     # ------------------------------------------------------------------ helpers
+    def _log_at_bottom(self) -> bool:
+        """True when the log is showing its last line (so new output should be followed).
+        If you scrolled up to read something, new output no longer pulls you back down."""
+        self.log.update_idletasks()      # Tk lays text out lazily; measure after it has caught up
+        return self.log.yview()[1] >= 0.999
+
     def _log(self, text: str):
+        follow = self._log_at_bottom()
         self.log.configure(state="normal")
         self.log.insert("end", text)
         lines = int(self.log.index("end-1c").split(".")[0])
         if lines > MAX_LOG_LINES:
             self.log.delete("1.0", f"{lines - MAX_LOG_LINES}.0")
-        self.log.see("end")
+        if follow:
+            self.log.see("end")
         self.log.configure(state="disabled")
 
     def _log_progress(self, text: str):
         """Show a redrawing progress bar on one line that updates in place."""
+        follow = self._log_at_bottom()
         self.log.configure(state="normal")
         if self._progress_open:
             self.log.delete("end-1c linestart", "end-1c")
@@ -647,7 +792,8 @@ class StudioApp:
             self.log.insert("end", "\n")
         self.log.insert("end", text.strip())
         self._progress_open = True
-        self.log.see("end")
+        if follow:
+            self.log.see("end")
         self.log.configure(state="disabled")
         self.status_var.set(text.strip()[:110])
 

@@ -20,6 +20,8 @@ import os
 import sys
 from dataclasses import dataclass, field
 
+from clipping.editor.voice import VOICES as _EDITOR_VOICES
+
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MAIN_PY = os.path.join(REPO_DIR, "main.py")
 SETTINGS_FILE = os.path.join(REPO_DIR, "studio_settings.json")
@@ -42,6 +44,7 @@ APP_DEFAULTS = {
     "whisper_device": "cpu",
     "whisper_compute_type": "int8",
     "whisper_model": "small",
+    "join": True,
 }
 
 CLIP_LENGTHS = {
@@ -53,19 +56,9 @@ CLIP_LENGTHS = {
     "Long, up to 3 minutes": (20, 179),
 }
 
-VOICES = [
-    "en-GB-MaisieNeural",
-    "en-GB-RyanNeural",
-    "en-US-GuyNeural",
-    "en-US-AriaNeural",
-    "en-US-ChristopherNeural",
-    "en-KE-ChilembaNeural",
-    "en-KE-AsiliaNeural",
-    "en-NG-AbeoNeural",
-    "en-NG-EzinneNeural",
-    "en-ZA-LukeNeural",
-    "en-ZA-LeahNeural",
-]
+# The Clip Editor's free voices (most popular first), plus the Studio's own extras.
+_STUDIO_EXTRA_VOICES = ["en-GB-MaisieNeural", "en-ZA-LukeNeural", "en-ZA-LeahNeural"]
+VOICES = [v[0] for v in _EDITOR_VOICES] + [v for v in _STUDIO_EXTRA_VOICES if v not in {x[0] for x in _EDITOR_VOICES}]
 
 API_KEYS = [
     ("GOOGLE_API_KEY", "Gemini API key (backup AI, recommended)", "https://aistudio.google.com/apikey"),
@@ -141,6 +134,8 @@ LABELS = {
     "padding": "Watermark padding (pixels)",
     "watermark_font_size": "Watermark text size (0 = auto)",
     "watermark_scale": "Watermark image size (% of height)",
+    "join": "Join links into one story",
+    "storyline_cuts": "Follow my story times",
     "yt_cookies": "YouTube cookies (browser name or cookies.txt)",
     "source": "Where the video comes from",
     "source_height": "Download quality (max height)",
@@ -153,6 +148,7 @@ LABELS = {
     "claude_max_sheets": "Pictures of the whole video (sheets of 9 frames)",
     "story_mode": "Story mode",
     "story_brief": "Story direction",
+    "story_angles": "Story angles (one per line)",
     "gemini_model": "Gemini model",
     "gemini_fallback_model": "Gemini backup model",
     "load_gemini_json": "Reuse the last AI answer (skip the AI step)",
@@ -187,6 +183,8 @@ def _section_for(dest: str) -> str:
         return "Music and B-roll"
     if d in ("watermark", "text", "image", "opacity", "position", "padding") or d.startswith("watermark_"):
         return "Watermark"
+    if d in ("join", "storyline_cuts"):
+        return "Clips"
     if d in ("yt_cookies", "source", "source_height", "use_dlp_subs", "cleanup_source"):
         return "Download"
     if d.startswith(("whisper", "gemini", "nvidia", "vllm", "local_")) or d in ("ai_provider", "load_gemini_json"):

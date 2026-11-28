@@ -30,6 +30,12 @@ from clipping.editor import timeline
 
 PROJECT_VERSION = 1
 PROJECT_FILE = "project.json"
+NOT_AN_EDIT = "That isn't a saved edit. Pick the project.json inside a folder in My Edits."
+
+
+class NotAnEdit(ValueError):
+    """The file picked to open is not a saved edit."""
+
 
 MODES = ("explain", "react", "new_story")
 CHANNELS = ("GTA 6", "Sports", "Kids", "Other")
@@ -54,6 +60,7 @@ class Source:
     height: int = 0
     fps: float = 30.0
     has_audio: bool = True
+    kind: str = ""            # "reaction" = a reaction file inserted into the cut, not footage of yours
     id: str = field(default_factory=lambda: _new_id("src"))
 
 
@@ -89,6 +96,13 @@ class Segment:
     # (Explain 1, React 1, New story 0).
     original_level: float | None = None
     # --- end phase 3 ---
+    # The moment My Clips makes from the whole clip. It stands in until you add
+    # your own moments from that video.
+    whole_clip: bool = False
+    captioned: bool = False    # speech in this moment has been listened to
+    # An inserted reaction (see reactions.py), and whether inserting it cut a moment in two.
+    reaction: bool = False
+    split_here: bool = False
 
     @property
     def length(self) -> float:
@@ -134,6 +148,10 @@ class Project:
     def source(self, source_id: str) -> Source | None:
         return next((s for s in self.sources if s.id == source_id), None)
 
+    def footage(self) -> list[Source]:
+        """The videos you cut from (reaction files are not among them)."""
+        return [s for s in self.sources if s.kind != "reaction"]
+
     def segment_index(self, segment_id: str) -> int:
         for i, s in enumerate(self.segments):
             if s.id == segment_id:
@@ -150,7 +168,10 @@ class Project:
         for i, seg in enumerate(self.segments, start=1):
             if seg.source_id not in known:
                 out.append(f"Moment {i}: its video is no longer in this edit.")
+        used = {s.source_id for s in self.segments}
         for src in self.sources:
+            if src.kind == "reaction" and src.id not in used:
+                continue
             if not os.path.exists(src.path):
                 out.append(f"The video '{src.name or src.path}' can't be found at {src.path}.")
         out += timeline.validate(self.segments, {s.id: s.duration for s in self.sources})
@@ -189,7 +210,24 @@ class Project:
 
     def add_ranges(self, source_id: str, text: str) -> list[Segment]:
         """Add every range typed like '1:02-1:10, 2:38-2:49' (in that order)."""
-        return [self.add_segment(source_id, a, b) for a, b in timeline.parse_ranges(text)]
+        ranges = timeline.parse_ranges(text)
+        src = self.source(source_id)
+        if src is not None and src.duration:
+            for a, b in ranges:
+                # 1 s of slack: lengths are shown rounded to the second.
+                if a >= src.duration or b > src.duration + 1.0:
+                    raise ValueError(
+                        f"{timeline.format_time(a, True)}-{timeline.format_time(b, True)} is outside the video, "
+                        f"which is {timeline.format_time(src.duration, True)} long. Nothing was added.")
+        return [self.add_segment(source_id, a, b) for a, b in ranges]
+
+    def drop_whole_clip(self, source_id: str) -> int:
+        """Take out the untouched whole-clip moment of this video, so your cut
+        is only the moments you picked. Returns how many went."""
+        keep = [s for s in self.segments if not (s.whole_clip and s.source_id == source_id)]
+        gone = len(self.segments) - len(keep)
+        self.segments = keep
+        return gone
 
     def remove_segment(self, index: int):
         del self.segments[index]
@@ -204,6 +242,7 @@ class Project:
         seg = self.segments[index]
         if not (seg.source_in + 0.1 < source_time < seg.source_out - 0.1):
             raise ValueError("Pick a point inside the moment to split it.")
+        seg.whole_clip = False      # you are cutting it up: it is yours now
         second = copy.deepcopy(seg)
         second.id = _new_id("seg")
         seg.source_out = source_time
@@ -214,6 +253,7 @@ class Project:
     def nudge(self, index: int, edge: str, delta: float):
         """Move a moment's start or end by ``delta`` seconds (e.g. ±0.1)."""
         seg = self.segments[index]
+        seg.whole_clip = False
         src = self.source(seg.source_id)
         limit = src.duration if src and src.duration else float("inf")
         if edge == "in":
@@ -300,8 +340,16 @@ def load(path: str) -> tuple[Project, str]:
         folder, file = path, os.path.join(path, PROJECT_FILE)
     else:
         folder, file = os.path.dirname(path), path
+    if os.path.basename(file) != PROJECT_FILE:
+        raise NotAnEdit(NOT_AN_EDIT)
     with open(file, encoding="utf-8") as f:
-        return Project.from_dict(json.load(f)), folder
+        try:
+            data = json.load(f)
+        except ValueError:
+            raise NotAnEdit(NOT_AN_EDIT) from None
+    if not isinstance(data, dict) or "segments" not in data:
+        raise NotAnEdit(NOT_AN_EDIT)
+    return Project.from_dict(data), folder
 
 
 # -------------------------------------------------------------------- undo

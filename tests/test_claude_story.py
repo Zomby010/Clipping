@@ -144,3 +144,56 @@ def test_make_sheets_writes_pictures(tmp_path):
     assert len(sheets) == 2 and all((tmp_path / "s" / p.split("/")[-1]).exists() for p in
                                     [s["path"] for s in sheets])
     assert "Picture 1" in frames.describe_sheets(sheets)
+
+
+def test_parse_angles_cleans_and_caps():
+    assert story.parse_angles("") == [] and story.parse_angles(None) == []
+    assert story.parse_angles("A heist\n\n  a  HEIST \nA rookie | A chase") == ["A heist", "A rookie", "A chase"]
+    assert story.parse_angles(["x", " ", "y"]) == ["x", "y"]
+    assert len(story.parse_angles([f"a{i}" for i in range(20)])) == story.MAX_ANGLES
+
+
+def test_assign_angles_spreads_over_clips_and_drops_none():
+    assert story.assign_angles([], 2) == [[], []]
+    assert story.assign_angles(["A"], 3) == [["A"], ["A"], ["A"]]
+    assert story.assign_angles(["A", "B"], 3) == [["A"], ["B"], ["A"]]
+    assert story.assign_angles(["A", "B", "C"], 2) == [["A", "C"], ["B"]]
+    got = story.assign_angles(list("ABCDE"), 3)
+    assert sorted(a for g in got for a in g) == list("ABCDE")
+
+
+def test_prompt_gives_each_clip_its_angle_in_part_order():
+    p = story.build_prompt("standalone", "t", _clips(), SEGS, angles=["A heist gone wrong", "A rookie's first day"])
+    assert "ANGLES THE CHANNEL OWNER PICKED" in p and "1. A heist gone wrong" in p
+    part1 = p[p.index("rank 1 — Part 1"):p.index("rank 2 — Part 2")]
+    part2 = p[p.index("rank 2 — Part 2"):]
+    assert "ANGLE FOR THIS CLIP: A heist gone wrong" in part1
+    assert "ANGLE FOR THIS CLIP: A rookie's first day" in part2
+    assert "do not mix the angles" in p
+    series = story.build_prompt("series", "t", _clips(), SEGS, angles=["One", "Two"])
+    assert "every angle below must show up" in series
+
+
+def test_prompt_without_angles_is_unchanged():
+    p = story.build_prompt("series", "t", _clips(), SEGS)
+    assert "ANGLE" not in p
+
+
+def test_write_stories_passes_angles_and_records_them(monkeypatch, tmp_path):
+    cfg = SimpleNamespace(story_mode="standalone", ai_provider="claude", voiceover_length="normal",
+                          voiceover_offset=0.5, voiceover_style="analysis", story_brief="",
+                          story_angles="Heist\nRookie", claude_frames=False,
+                          outputs_dir=str(tmp_path), file_video_asli="")
+    seen = {}
+
+    def fake_ask(cfg, prompt, schema=None, images=(), label=""):
+        seen["prompt"] = prompt
+        return {"series_title": "S", "premise": "P", "cast": [],
+                "episodes": [{"rank": 1, "episode_title": "A", "script": "first"},
+                             {"rank": 2, "episode_title": "B", "script": "second"}]}
+
+    monkeypatch.setattr(claude, "ask", fake_ask)
+    st = story.write_stories(cfg, _clips(), "t", SEGS)
+    assert "Heist" in seen["prompt"] and "Rookie" in seen["prompt"]
+    assert st["episodes"][1]["angles"] == ["Heist"] and st["episodes"][2]["angles"] == ["Rookie"]
+    assert "Angle: Rookie" in story.as_text(st)

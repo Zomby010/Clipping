@@ -50,7 +50,9 @@ class SoundPanelsMixin:
 
     # ============================================================ music + sfx page
     def _build_sound_page(self, t):
-        self._heading(t, "Music", "Plays under the whole video and dips when someone talks.")
+        self._heading(t, "Music and SFX", "Music plays under the whole video and dips when someone talks.")
+        page = t
+        t = self._section(page, "Music")
         row = ttk.Frame(t, style="Card.TFrame")
         row.pack(fill="x")
         ttk.Label(row, text="Mood", style="Card.TLabel").pack(side="left")
@@ -115,8 +117,9 @@ class SoundPanelsMixin:
         ttk.Label(t, text="The note is saved with the track and added to the YouTube description.",
                   style="Help.TLabel", wraplength=260, justify="left").pack(anchor="w")
 
-        ttk.Separator(t).pack(fill="x", pady=10)
-        self._heading(t, "Sound effects", "A short sound at the player's current time in your cut.")
+        t = self._section(page, "Sound effects")
+        ttk.Label(t, text="A short sound at the player's current time in your cut.", style="Help.TLabel",
+                  wraplength=255).pack(anchor="w", pady=(0, 6))
         self.sfx_lib: dict[str, list[str]] = O.sfx_library()
         row = ttk.Frame(t, style="Card.TFrame")
         row.pack(fill="x")
@@ -138,8 +141,7 @@ class SoundPanelsMixin:
         self._sfx_rows: list[dict] = []
         self._item_buttons(t, lambda: self._sfx_rows, self.sfx_list, "sound effect")
 
-        ttk.Separator(t).pack(fill="x", pady=10)
-        self._heading(t, "Loudness", "")
+        t = self._section(page, "Loudness")
         self.loud_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(t, text="Even out the loudness", variable=self.loud_var, style="Card.TCheckbutton",
                         command=self._loudness_changed).pack(anchor="w")
@@ -326,53 +328,28 @@ class SoundPanelsMixin:
 
     # ============================================================ reactions page
     def _build_reactions_page(self, t):
-        self._heading(t, "Reaction clips", "Your 1 to 2 second clips from assets/reactions/<mood>/.")
-        self.react_lib: dict[str, list[str]] = O.reaction_library()
+        self._heading(t, "Reactions", "Your clips, GIFs and pictures from assets/reactions/<mood>/.")
+        page = t
+        self._build_reaction_picker(page)
+        t = self._section(page, "In this edit")
+        self.ovl_list = _listbox(t, self.base_font, 6)
+        self.ovl_list.pack(fill="x")
+        self.ovl_list.bind("<<ListboxSelect>>", lambda e: self._jump_to_item(self._ovl_rows, self.ovl_list))
+        self._ovl_rows: list[dict] = []
         row = ttk.Frame(t, style="Card.TFrame")
-        row.pack(fill="x")
-        ttk.Label(row, text="Mood", style="Card.TLabel").pack(side="left")
-        moods = sorted(set(self.react_lib) | {n for n in ("laugh", "shock", "hype", "sad", "cringe")})
-        self.react_mood = tk.StringVar(value=next(iter(self.react_lib), moods[0]))
-        cb = ttk.Combobox(row, textvariable=self.react_mood, state="readonly", width=12, values=moods)
-        cb.pack(side="left", padx=6)
-        cb.bind("<<ComboboxSelected>>", lambda e: self._fill_reactions())
-        self.react_clips = _listbox(t, self.base_font, 3)
-        self.react_clips.pack(fill="x", pady=(4, 0))
-        self._react_files: list[str] = []
+        row.pack(anchor="w", pady=(4, 0))
+        ttk.Button(row, text="Delete", width=0, command=self.delete_row).pack(side="left")
+        ttk.Button(row, text="−0.1 s", width=0, command=lambda: self.nudge_row(-0.1)).pack(side="left", padx=4)
+        ttk.Button(row, text="+0.1 s", width=0, command=lambda: self.nudge_row(0.1)).pack(side="left")
+        ttk.Label(t, text="For a reaction in between:", style="Help.TLabel").pack(anchor="w", pady=(6, 0))
         row = ttk.Frame(t, style="Card.TFrame")
-        row.pack(fill="x", pady=(4, 0))
-        ttk.Button(row, text="Play", width=6, command=self._play_reaction).pack(side="left")
-        ttk.Button(row, text="Add your own…", command=self.add_own_reaction).pack(side="left", padx=4)
-        self.react_style = tk.StringVar(value="cutaway")
-        for value, text in O.REACTION_STYLES:
-            ttk.Radiobutton(t, text=text, value=value, variable=self.react_style,
-                            style="Card.TRadiobutton").pack(anchor="w", pady=1)
-        row = ttk.Frame(t, style="Card.TFrame")
-        row.pack(fill="x", pady=(2, 0))
-        ttk.Label(row, text="Corner", style="Card.TLabel").pack(side="left")
-        self.react_corner = tk.StringVar(value=O.CORNER_SPOTS[0][1])
-        ttk.Combobox(row, textvariable=self.react_corner, state="readonly", width=11,
-                     values=[n for _, n in O.CORNER_SPOTS]).pack(side="left", padx=6)
-        self.react_border = tk.BooleanVar(value=True)
-        ttk.Checkbutton(t, text="White edge on the box", variable=self.react_border,
-                        style="Card.TCheckbutton").pack(anchor="w", pady=(3, 0))
-        row = ttk.Frame(t, style="Card.TFrame")
-        row.pack(fill="x", pady=(3, 0))
-        ttk.Label(row, text="Seconds", style="Card.TLabel").pack(side="left")
-        self.react_secs = tk.StringVar(value="1.2")
-        ttk.Spinbox(row, from_=O.REACTION_LENGTH[0], to=O.REACTION_LENGTH[1], increment=0.2, width=5,
-                    textvariable=self.react_secs).pack(side="left", padx=6)
-        ttk.Label(t, text="Volume of its own sound", style="Card.TLabel").pack(anchor="w", pady=(3, 0))
-        self.react_gain = tk.DoubleVar(value=0.9)
-        ttk.Scale(t, from_=0.0, to=1.5, variable=self.react_gain, orient="horizontal").pack(fill="x")
-        ttk.Button(t, text="Add reaction here", style="Accent.TButton",
-                   command=self.add_reaction_here).pack(anchor="w", pady=(6, 0))
-        ttk.Label(t, text="Full screen: your video keeps playing underneath and comes back. It never freezes.",
-                  style="Help.TLabel", wraplength=260, justify="left").pack(anchor="w", pady=(2, 0))
-        ttk.Button(t, text="Use Claude's cues", command=self.use_script_cues).pack(anchor="w", pady=(6, 0))
+        row.pack(anchor="w")
+        ttk.Button(row, text="Move to player spot", width=0, command=self.move_inserted_here).pack(side="left")
+        ttk.Button(row, text="Shorter", width=0, command=lambda: self.resize_inserted(-0.5)).pack(side="left", padx=4)
+        ttk.Button(row, text="Longer", width=0, command=lambda: self.resize_inserted(0.5)).pack(side="left")
 
-        ttk.Separator(t).pack(fill="x", pady=10)
-        self._heading(t, "Arrows and circles", "Point at something for a moment.")
+        t = self._section(page, "Arrows and circles", open_=False)
+        ttk.Label(t, text="Point at something for a moment.", style="Help.TLabel").pack(anchor="w", pady=(0, 4))
         row = ttk.Frame(t, style="Card.TFrame")
         row.pack(fill="x")
         self.mark_kind = tk.StringVar(value="arrow")
@@ -398,15 +375,9 @@ class SoundPanelsMixin:
         ttk.Scale(t, from_=0.1, to=0.45, variable=self.mark_size, orient="horizontal").pack(fill="x")
         ttk.Button(t, text="Add here", style="Accent.TButton", command=self.add_mark_here).pack(anchor="w", pady=(6, 0))
 
-        ttk.Label(t, text="On the video", style="Card.TLabel").pack(anchor="w", pady=(10, 0))
-        self.ovl_list = _listbox(t, self.base_font, 5)
-        self.ovl_list.pack(fill="x")
-        self.ovl_list.bind("<<ListboxSelect>>", lambda e: self._jump_to_item(self._ovl_rows, self.ovl_list))
-        self._ovl_rows: list[dict] = []
-        self._item_buttons(t, lambda: self._ovl_rows, self.ovl_list, "item")
-
-        ttk.Separator(t).pack(fill="x", pady=10)
-        self._heading(t, "Channel logo", "The same small logo on every video of this channel.")
+        t = self._section(page, "Channel logo", open_=False)
+        ttk.Label(t, text="The same small logo on every video of this channel.", style="Help.TLabel",
+                  wraplength=255).pack(anchor="w", pady=(0, 4))
         row = ttk.Frame(t, style="Card.TFrame")
         row.pack(fill="x")
         ttk.Button(row, text="Choose logo…", command=self.choose_logo).pack(side="left")
@@ -429,62 +400,6 @@ class SoundPanelsMixin:
             s = ttk.Scale(t, from_=lo, to=hi, variable=var, orient="horizontal")
             s.pack(fill="x")
             s.bind("<ButtonRelease-1>", lambda e: self._logo_changed())
-        self._fill_reactions()
-
-    def _fill_reactions(self):
-        self._react_files = self.react_lib.get(self.react_mood.get(), [])
-        self.react_clips.delete(0, "end")
-        for p in self._react_files:
-            self.react_clips.insert("end", os.path.basename(p))
-        if not self._react_files:
-            self.react_clips.insert("end", "(none yet: Add your own…)")
-        else:
-            self.react_clips.selection_set(0)
-
-    def _picked_reaction(self) -> str | None:
-        sel = self.react_clips.curselection()
-        if sel and sel[0] < len(self._react_files):
-            return self._react_files[sel[0]]
-        return None
-
-    def _play_reaction(self):
-        path = self._picked_reaction()
-        if not path:
-            self.status("Pick a reaction clip first.")
-            return
-        self._stop_sound()
-        if shutil.which("mpv"):
-            self._sound_proc = subprocess.Popen(["mpv", "--really-quiet", "--geometry=360x640", path],
-                                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            self.open_folder(path)
-
-    def add_own_reaction(self):
-        paths = filedialog.askopenfilenames(title="Add reaction clips", filetypes=[
-            ("Videos", " ".join(f"*{e}" for e in O.VIDEO_EXTS)), ("All files", "*")])
-        if not paths:
-            return
-        folder = os.path.join(O.REACTIONS_DIR, self.react_mood.get() or "laugh")
-        for p in paths:
-            O.add_to_library(p, folder)
-        self.react_lib = O.reaction_library()
-        self._fill_reactions()
-        self.status(f"Added to the '{self.react_mood.get()}' reactions.")
-
-    def add_reaction_here(self):
-        path = self._picked_reaction()
-        if not path:
-            self.status("Pick a reaction clip first (or add your own).")
-            return
-        t = self._cut_time()
-        if t is None:
-            self.status("Watch 'My cut' and move the player to where the reaction should go.")
-            return
-        corner = {n: v for v, n in O.CORNER_SPOTS}.get(self.react_corner.get(), "top-left")
-        secs = _float(tk.StringVar(value=self.react_secs.get()), 1.2, *O.REACTION_LENGTH)
-        O.add_reaction(self.project, path, t, self.react_style.get(), secs, corner,
-                       round(_float(self.react_gain, 0.9, 0.0, 2.0), 2), bool(self.react_border.get()))
-        self.commit(f"Reaction added at {timeline.format_time(t, True)}.")
 
     def use_script_cues(self):
         """Add reactions / sound effects where Claude's script lines ask for them
@@ -510,7 +425,10 @@ class SoundPanelsMixin:
                 kind, _, name = cue.partition(":")
                 try:
                     if kind == "react" and self.react_lib.get(name):
-                        O.add_reaction(self.project, self.react_lib[name][0], t, "corner", 1.2)
+                        clips = self.react_lib[name]      # a favourite of that mood first, then a video
+                        pick = next((p for p in self.favourites() if p in clips), None) or next(
+                            (p for p in clips if p.lower().endswith(O.VIDEO_EXTS + (".gif",))), clips[0])
+                        O.add_reaction(self.project, pick, t, "corner", 1.2)
                         added += 1
                     elif kind == "sfx" and self.sfx_lib.get(name):
                         O.add_sfx(self.project, self.sfx_lib[name][0], t, 0.8, name)
@@ -607,13 +525,15 @@ class SoundPanelsMixin:
 
     def _refresh_reactions_page(self):
         self._ovl_rows = [o for o in self.project.overlays
-                          if o.get("type") in O.ANCHORED and o.get("visible", True)]
+                          if o.get("type") in O.ANCHORED and o.get("visible", True)] + self._inserted_rows()
         self._ovl_rows.sort(key=lambda o: o.get("start", 0))
         sel = self.ovl_list.curselection()
         self.ovl_list.delete(0, "end")
         for o in self._ovl_rows:
             when = timeline.format_time(o["start"], True)
-            if o["type"] == "reaction":
+            if o["type"] == "insert":
+                text = f"{when}  in between, {o['length']:g} s  {os.path.basename(o['path'])[:22]}"
+            elif o["type"] == "reaction":
                 where = "full screen" if o.get("style") == "cutaway" else "corner"
                 text = f"{when}  reaction ({where}) {os.path.basename(o['path'])}"
             elif o["type"] == "arrow":

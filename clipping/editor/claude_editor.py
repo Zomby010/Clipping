@@ -279,6 +279,8 @@ def moments_context(project, scene_log: list[dict], transcript_for) -> str:
     is, what is in it, what is said, and how many words fit."""
     rows = []
     for p, seg in zip(timeline.layout(project.segments), project.segments):
+        if seg.reaction:        # an inserted reaction gets no narration
+            continue
         src = project.source(seg.source_id)
         scenes = scenes_between(scene_log, seg.source_id, seg.source_in, seg.source_out)
         what = "; ".join(f"[{s['start']:.0f}-{s['end']:.0f}s] {s['what_happens']} ({s['mood']})" for s in scenes) \
@@ -331,13 +333,13 @@ Return only the JSON array of lines, in play order."""
 
 
 def clean_script(items: list[dict], project) -> list[dict]:
-    known = {s.id for s in project.segments}
+    known = {s.id for s in project.segments if not s.reaction}
     allowed = {c["name"].lower() for c in (project.voices or {}).get("characters", []) if c.get("name")}
     out = []
     for it in items:
         if it["segment_id"] not in known:
             continue
-        text = " ".join(it["text"].split())
+        text = " ".join(S.unwrap_text(it["text"]).split())
         if not text:
             continue
         who = (it.get("character") or "").strip()
@@ -390,7 +392,7 @@ Return only JSON like {{"text": "..."}}."""
 
 
 def _clean_rewrite(d: dict) -> dict:
-    text = " ".join(d["text"].split())
+    text = " ".join(S.unwrap_text(d["text"]).split())
     if not text:
         raise ValueError("the new line was empty")
     return {"text": text}

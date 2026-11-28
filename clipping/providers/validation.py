@@ -92,18 +92,26 @@ def _ordered_intervals(items, low, high):
         last = end
 
 
-def validate_clips(clips, *, source_end, requested_clips, min_duration=20, max_duration=179):
+def validate_clips(clips, *, source_end, requested_clips, min_duration=20, max_duration=179, storyline_cuts=False):
     if not clips or len(clips) > requested_clips:
         raise InvalidOutputError("No clips, or more clips than requested.")
     intervals = []
     for item in clips:
         a, b = _interval(item, 0, source_end)
-        if not min_duration <= b - a <= max_duration:
+        length = b - a
+        if storyline_cuts:
+            # Segments come in story order from anywhere: only overlaps are wrong.
+            parts = sorted(_interval(s, a, b) for s in item["keep_segments"])
+            if not parts or any(right[0] < left[1] for left, right in zip(parts, parts[1:])):
+                raise InvalidOutputError("Storyline segments are missing or overlap.")
+            length = sum(end - start for start, end in parts)
+        if not min_duration <= length <= max_duration:
             raise InvalidOutputError(f"Clip length must be {min_duration}-{max_duration} seconds.")
         if not 1 <= _number(item["viral_score"]) <= 100:
             raise InvalidOutputError("Viral score must be 1-100.")
         _interval(item, a, b, start="hook_start_time", end="hook_end_time")
-        _ordered_intervals(item["keep_segments"], a, b)
+        if not storyline_cuts:
+            _ordered_intervals(item["keep_segments"], a, b)
         _ordered_intervals(item["broll_list"], a, b)
         # Hook montage items may deliberately be re-ordered, but stay in source clip.
         for hook in item["hook_v2"]["items"]:
@@ -111,7 +119,8 @@ def validate_clips(clips, *, source_end, requested_clips, min_duration=20, max_d
         if item["hook_v2"]["enabled"] and not item["hook_v2"]["items"]:
             raise InvalidOutputError("Hook V2 is on but has no segments.")
         intervals.append((a, b))
-    ordered = sorted(intervals)
+    # Storyline clips span wide stretches of the source, which may overlap.
+    ordered = [] if storyline_cuts else sorted(intervals)
     if any(right[0] < left[1] for left, right in zip(ordered, ordered[1:])):
         raise InvalidOutputError("Clips overlap; pick different moments.")
     return clips

@@ -20,3 +20,11 @@ clip_editor_settings.json.tmp
 custom_fonts/
 assets/bgm/licences.json
 assets/logos/
+
+# Downloaded reactions, fonts and model files (the folder notes stay)
+assets/reactions/**
+!assets/reactions/*/
+!assets/reactions/README.md
+!assets/reactions/*/.gitkeep
+/Montserrat-Black.ttf
+*.tflite

@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from clipping.editor import audio_mix, framing, overlays, text_layers
+from clipping.editor import audio_mix, framing, overlays, reactions, text_layers
 from clipping.editor.project import Project, Segment, Source, safe_name
 
 
@@ -137,7 +137,10 @@ REMOVE_TALKING = {
 
 
 def original_level(project, seg: Segment) -> float:
-    """How loud a moment's own sound is: its slider, else what the mode says."""
+    """How loud a moment's own sound is: its slider, else what the mode says.
+    "Replace the original sound" silences every moment of yours (not inserted reactions)."""
+    if not seg.reaction and (project.voices or {}).get("mute_original"):
+        return 0.0
     if seg.original_level is not None:
         return min(1.0, max(0.0, float(seg.original_level)))
     return MODE_ORIGINAL_LEVEL.get(project.mode, 1.0)
@@ -181,7 +184,10 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
     parts = []
     for i, seg in enumerate(project.segments):
         src = project.source(seg.source_id)
-        cmd += ["-ss", _num(seg.source_in), "-t", _num(seg.source_out - seg.source_in), "-i", src.path]
+        if seg.reaction:
+            cmd += reactions.input_args(src.path, seg.source_out - seg.source_in, q.fps)
+        else:
+            cmd += ["-ss", _num(seg.source_in), "-t", _num(seg.source_out - seg.source_in), "-i", src.path]
     # --- phase 3: voice ---
     talk_cut = REMOVE_TALKING.get((project.voices or {}).get("remove_talking") or "", "")
     # --- end phase 3 ---
@@ -189,7 +195,8 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
         src = project.source(seg.source_id)
         parts.append(video_filter(seg, src, q, f"[{i}:v]", f"[v{i}]"))
         parts.append(audio_filter(seg, src, i, f"[a{i}]",
-                                  level=original_level(project, seg), remove_talking=talk_cut))
+                                  level=original_level(project, seg),
+                                  remove_talking="" if seg.reaction else talk_cut))
     n = len(project.segments)
     k = n  # next input number
     joined = "".join(f"[v{i}][a{i}]" for i in range(n))
@@ -200,7 +207,7 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
     if visuals is not None:
         W, H = q.width, q.height
         for j, r in enumerate(visuals.cutaways):
-            cmd += ["-ss", "0", "-t", _num(r.end - r.start), "-i", r.path]
+            cmd += _overlay_input(r, q.fps)
             reaction_inputs.append((k, r))
             parts.append(f"[{k}:v]setpts=PTS-STARTPTS+{_num(r.start)}/TB,fps={q.fps},"
                          f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
@@ -210,7 +217,7 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
             last, k = f"vcut{j}", k + 1
         for j, r in enumerate(visuals.corners):
             x, y, bw, bh = r.rect
-            cmd += ["-ss", "0", "-t", _num(r.end - r.start), "-i", r.path]
+            cmd += _overlay_input(r, q.fps)
             reaction_inputs.append((k, r))
             parts.append(f"[{k}:v]setpts=PTS-STARTPTS+{_num(r.start)}/TB,fps={q.fps},"
                          f"scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
@@ -244,7 +251,10 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
         last = "vass"
     for e, mark in enumerate(layers.emojis if layers is not None else []):
         cmd += ["-i", mark.png]
-        parts.append(f"[{last}][{k}:v]overlay=x={mark.x}:y={mark.y}:eof_action=repeat:"
+        x, y = text_layers.emoji_motion(mark.anim, mark.x, mark.y)
+        if mark.anim:
+            x, y = f"'{x}'", f"'{y}'"
+        parts.append(f"[{last}][{k}:v]overlay=x={x}:y={y}:eof_action=repeat:"
                      f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[ve{e}]")
         last, k = f"ve{e}", k + 1
     parts.append(f"[{last}]null[vout]")
@@ -275,6 +285,13 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
         cmd += ["-profile:v", "high"]
     cmd.append(out_path)
     return cmd
+
+
+def _overlay_input(r, fps: int) -> list[str]:
+    """Input options for a reaction laid over the video."""
+    if r.path.lower().endswith(reactions.VIDEO_EXTS):
+        return ["-ss", "0", "-t", _num(r.end - r.start), "-i", r.path]
+    return reactions.input_args(r.path, r.end - r.start, fps)
 
 
 def _filter_path(path: str) -> str:

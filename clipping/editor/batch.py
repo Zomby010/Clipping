@@ -83,7 +83,7 @@ def work_out_auto_crop(project, cancel=None) -> None:
     for seg in project.segments:
         if cancel is not None and cancel.is_set():
             raise render.Cancelled("Stopped.")
-        if seg.framing.mode == "auto" and seg.framing.auto_x is None:
+        if seg.framing.mode == "auto" and seg.framing.auto_x is None and not seg.reaction:
             src = project.source(seg.source_id)
             centre = framing.auto_centre(src.path, seg.source_in, seg.source_out)
             seg.framing.auto_x, seg.framing.auto_y = centre if centre else (0.5, 0.5)

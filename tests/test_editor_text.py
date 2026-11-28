@@ -138,6 +138,8 @@ def test_phase1_project_file_still_opens(tmp_path):
     for key, value in old.items():
         if key == "segments":   # later phases add fields with defaults (e.g. original_level); nothing old may be lost
             assert [{k: v for k, v in seg.items() if k in value[i]} for i, seg in enumerate(again[key])] == value
+        elif key == "sources":
+            assert [{k: v for k, v in src.items() if k in value[i]} for i, src in enumerate(again[key])] == value
         else:
             assert again[key] == value
     assert pr.hook == {} and pr.upload == {} and pr.cover == {} and pr.caption_style == {}

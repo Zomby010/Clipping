@@ -44,8 +44,14 @@ def _project():
 def test_voice_list_and_defaults():
     ids = [v[0] for v in V.VOICES]
     for wanted in ("en-KE-AsiliaNeural", "en-KE-ChilembaNeural", "en-NG-AbeoNeural", "en-NG-EzinneNeural",
-                   "sw-KE-RafikiNeural", "sw-KE-ZuriNeural", "en-US-GuyNeural", "en-GB-RyanNeural"):
+                   "sw-KE-RafikiNeural", "sw-KE-ZuriNeural", "en-US-GuyNeural", "en-GB-RyanNeural",
+                   "en-US-AriaNeural", "en-US-JennyNeural", "en-US-BrianNeural", "en-US-AndrewNeural",
+                   "en-US-ChristopherNeural", "en-US-AvaNeural", "en-GB-SoniaNeural"):
         assert wanted in ids
+    assert len(ids) == len(set(ids)), "a voice is listed twice"
+    labels = [v[1] for v in V.VOICES]
+    assert len(labels) == len(set(labels)), "two voices share a label, so the picker could not tell them apart"
+    assert ids[0] == "en-US-GuyNeural", "the most familiar voice is first in the picker"
     pr = P.Project(channel="Kids")
     assert V.settings(pr)["default"] == "sw-KE-ZuriNeural" and V.language_of("sw-KE-ZuriNeural") == "sw"
     pr.channel = "Sports"

@@ -80,9 +80,51 @@ def clip_snippet(data_segmen: list[dict], start: float, end: float) -> str:
     return "\n".join(parts) or "(no speech in this part)"
 
 
-def order_clips(clips: list[dict]) -> list[dict]:
-    """Episodes follow the order the moments happen in the video."""
-    return sorted(clips, key=lambda c: float(c["start_time"]))
+def footage(clip: dict, use_segments: bool = True) -> list[tuple[float, float]]:
+    """The source stretches the clip shows, in the order it shows them."""
+    segs = clip.get("keep_segments") or []
+    if use_segments and len(segs) > 1:
+        return [(float(s["start_time"]), float(s["end_time"])) for s in segs]
+    return [(float(clip["start_time"]), float(clip["end_time"]))]
+
+
+def order_clips(clips: list[dict], by_rank: bool = False) -> list[dict]:
+    """Episodes follow the order the moments happen in the video. With storyline cuts
+    a clip can come from anywhere, so they follow rank (the order of your angles)."""
+    return sorted(clips, key=lambda c: int(c["rank"]) if by_rank else float(c["start_time"]))
+
+
+MAX_ANGLES = 8
+
+
+def parse_angles(value) -> list[str]:
+    """The angles you typed, as a clean list. Takes a list, or text with one angle per
+    line (a "|" also splits). Blanks and repeats are dropped; at most MAX_ANGLES are kept."""
+    if not value:
+        return []
+    items = value if isinstance(value, (list, tuple)) else str(value).replace("|", "\n").splitlines()
+    out: list[str] = []
+    for item in items:
+        text = " ".join(str(item).split())
+        if text and text.lower() not in {a.lower() for a in out}:
+            out.append(text)
+    return out[:MAX_ANGLES]
+
+
+def assign_angles(angles: list[str], n_clips: int) -> list[list[str]]:
+    """Which angle(s) each clip (in Part order) must be told through.
+
+    With as many clips as angles (or more), clip 1 gets angle 1, clip 2 angle 2 and so on,
+    starting again from angle 1 after the last. With more angles than clips, the extra angles
+    are added to the clips in turn, so no angle is left out."""
+    if not angles or n_clips <= 0:
+        return [[] for _ in range(max(n_clips, 0))]
+    if len(angles) <= n_clips:
+        return [[angles[i % len(angles)]] for i in range(n_clips)]
+    buckets: list[list[str]] = [[] for _ in range(n_clips)]
+    for j, angle in enumerate(angles):
+        buckets[j % n_clips].append(angle)
+    return buckets
 
 
 def build_prompt(
@@ -97,9 +139,13 @@ def build_prompt(
     offset: float = 0.5,
     use_segments: bool = True,
     picture_for_rank: dict | None = None,
+    angles: list[str] | None = None,
+    by_rank: bool = False,
 ) -> str:
     picture_for_rank = picture_for_rank or {}
-    ordered = order_clips(clips)
+    ordered = order_clips(clips, by_rank)
+    angles = parse_angles(angles)
+    per_clip = assign_angles(angles, len(ordered))
     blocks = []
     for n, clip in enumerate(ordered, 1):
         start, end = float(clip["start_time"]), float(clip["end_time"])
@@ -107,12 +153,17 @@ def build_prompt(
         budget = word_budget(secs, length, offset)
         pic = picture_for_rank.get(int(clip["rank"]))
         pic_line = f"\nPicture: {pic}" if pic else ""
+        mine = per_clip[n - 1]
+        if mine:
+            label = "ANGLE FOR THIS CLIP" if len(mine) == 1 else "ANGLES FOR THIS CLIP (weave them together)"
+            pic_line += "\n" + label + ": " + " / ".join(mine)
         blocks.append(
             f"### Clip rank {clip['rank']} — Part {n} of {len(ordered)}\n"
             f"Source time: {start:.1f}s to {end:.1f}s (plays for about {secs:.0f}s)\n"
             f"Working title: {clip.get('title_inggris') or clip.get('title_indonesia') or '-'}\n"
             f"Write AT MOST {budget} words for this clip.{pic_line}\n"
-            f"What is said in this clip:\n{clip_snippet(data_segmen, start, end)}\n"
+            f"What is said in this clip:\n"
+            + "\n".join(clip_snippet(data_segmen, a, b) for a, b in footage(clip, use_segments)) + "\n"
         )
 
     if mode == "series":
@@ -130,6 +181,21 @@ def build_prompt(
 - Do not reuse the same characters or jokes across clips.
 - Use "series_title" and "premise" for the overall theme of the set, and "cast" for every character you named."""
 
+    if not angles:
+        angles_text = ""
+    else:
+        listed = "\n".join(f"{i}. {a}" for i, a in enumerate(angles, 1))
+        how = ("Keep ONE continuing story, but each part must lean into its own angle as that part's "
+               "storyline, and every angle below must show up somewhere in the series."
+               if mode == "series" else
+               "Each clip is told through its own angle: do not mix the angles of different clips.")
+        angles_text = f"""
+ANGLES THE CHANNEL OWNER PICKED (the videos MUST follow these):
+{listed}
+Every clip below says which angle it is assigned. {how}
+If an angle does not fit what is on screen, bend the story to the angle rather than dropping it.
+"""
+
     brief_text = brief.strip() or "None given. Choose the storyline you think will keep viewers watching to the end."
     narrator = STYLE_HINTS.get(style, STYLE_HINTS["analysis"])
 
@@ -139,7 +205,7 @@ Read the WHOLE transcript of the source video below first, so you understand eve
 
 STORY DIRECTION FROM THE CHANNEL OWNER:
 {brief_text}
-
+{angles_text}
 {mode_rules}
 
 NARRATION RULES (for every part):
@@ -237,7 +303,9 @@ def write_stories(cfg, clips: list[dict], full_transcript: str, data_segmen: lis
     length = getattr(cfg, "voiceover_length", "normal")
     offset = float(getattr(cfg, "voiceover_offset", 0.5))
     common = dict(brief=getattr(cfg, "story_brief", "") or "", style=getattr(cfg, "voiceover_style", "analysis"),
-                  length=length, offset=offset, use_segments=use_segments)
+                  length=length, offset=offset, use_segments=use_segments,
+                  angles=parse_angles(getattr(cfg, "story_angles", "")),
+                  by_rank=bool(getattr(cfg, "storyline_cuts", False)))
 
     result, writer = None, None
     if getattr(cfg, "ai_provider", "gemini") == "claude":
@@ -248,20 +316,23 @@ def write_stories(cfg, clips: list[dict], full_transcript: str, data_segmen: lis
         video = getattr(cfg, "file_video_asli", "")
         if getattr(cfg, "claude_frames", True) and video and os.path.exists(video):
             for clip in clips:
-                sheets = frames.make_sheets(
-                    video, os.path.join(cfg.outputs_dir, "claude_frames"),
-                    start=float(clip["start_time"]), end=float(clip["end_time"]),
-                    max_sheets=1, prefix=f"clip{clip['rank']}",
-                )
-                if sheets:
-                    pictures[int(clip["rank"])] = sheets[0]["path"]
+                spans = footage(clip, use_segments)
+                if not getattr(cfg, "storyline_cuts", False):
+                    spans = [(float(clip["start_time"]), float(clip["end_time"]))]
+                for n, (a, b) in enumerate(spans):
+                    sheets = frames.make_sheets(
+                        video, os.path.join(cfg.outputs_dir, "claude_frames"),
+                        start=a, end=b, max_sheets=1, prefix=f"clip{clip['rank']}-{n}",
+                    )
+                    if sheets:
+                        pictures.setdefault(int(clip["rank"]), []).append(sheets[0]["path"])
         prompt = build_prompt(mode, full_transcript, clips, data_segmen,
-                              picture_for_rank={r: os.path.basename(p) for r, p in pictures.items()}, **common)
+                              picture_for_rank={r: ", ".join(map(os.path.basename, p)) for r, p in pictures.items()}, **common)
         if pictures:
-            prompt = ("Each clip has one picture: a 3x3 grid of frames from that clip, in time order. "
+            prompt = ("Each clip has one or more pictures, each a 3x3 grid of frames from that clip, in time order. "
                       "Look at them so the story matches what is on screen.\n\n" + prompt)
         try:
-            result = _clean(claude.ask(cfg, prompt, schema=STORY_SCHEMA, images=list(pictures.values()),
+            result = _clean(claude.ask(cfg, prompt, schema=STORY_SCHEMA, images=[p for group in pictures.values() for p in group],
                                        label="Story"), clips)
             writer = "claude"
         except Exception as e:  # noqa: BLE001 - fall back to Gemini
@@ -279,11 +350,13 @@ def write_stories(cfg, clips: list[dict], full_transcript: str, data_segmen: lis
     if result is None:
         return None
 
-    ordered = order_clips(clips)
+    ordered = order_clips(clips, common["by_rank"])
+    per_clip = assign_angles(common["angles"], len(ordered))
     for n, clip in enumerate(ordered, 1):
         ep = result["episodes"].get(int(clip["rank"]))
         if not ep:
             continue
+        ep["angles"] = per_clip[n - 1]
         budget = word_budget(clip_output_seconds(clip, use_segments), length, offset)
         ep["script"] = _trim_to_budget(ep["script"], budget)
         ep["part"], ep["parts"] = n, len(ordered)
@@ -310,6 +383,9 @@ def as_text(story: dict) -> str:
     eps = sorted(story["episodes"].items(), key=lambda kv: kv[1].get("part", 0))
     for rank, ep in eps:
         head = f"Part {ep.get('part', '?')}" if story.get("mode") == "series" else f"Clip {rank}"
-        lines += [f"{head}: {ep.get('episode_title', '')}  (clip rank {rank})", ep["script"], ""]
+        lines += [f"{head}: {ep.get('episode_title', '')}  (clip rank {rank})"]
+        if ep.get("angles"):
+            lines.append("Angle: " + " / ".join(ep["angles"]))
+        lines += [ep["script"], ""]
     lines.append(f"Written by: {story.get('writer', '?')}, mode: {story.get('mode', '?')}")
     return "\n".join(lines) + "\n"
