@@ -186,6 +186,10 @@ class ReactionPanelsMixin:
             else:
                 cell.configure(text=f"can't show\n{tag}", width=11, height=5)
             cell.grid(row=n // self._react_columns, column=n % self._react_columns, padx=2, pady=2)
+            # phase A: drag the thumbnail onto the timeline to put it in there
+            cell.bind("<ButtonPress-1>", lambda e, p=path: self._react_drag_start(e, p), add="+")
+            cell.bind("<B1-Motion>", self._react_drag_motion, add="+")
+            cell.bind("<ButtonRelease-1>", self._react_drag_drop, add="+")
         if not shown:
             empty = ("No favourites yet. Pick a reaction and press ☆ Favourite."
                      if self.react_view.get() == "fav" else "Nothing in this mood yet. Press Add your own…")
@@ -270,6 +274,11 @@ class ReactionPanelsMixin:
         if self.preview_stale:
             self.status("My cut is still updating. Add the reaction when the new preview shows.")
             return
+        self.add_reaction_at(path, t)
+
+    def add_reaction_at(self, path: str, t: float):
+        """Put the reaction in at edit time ``t``, the way the Reactions tab is set
+        (into the cut, full screen over it, or in a corner)."""
         gain = round(_number(self.react_gain, 0.9, 0.0, 1.0), 2)
         if self.react_style.get() == "insert":
             seconds = _number(self.react_secs, R.DEFAULT_SECONDS, *R.SECONDS)
@@ -287,6 +296,52 @@ class ReactionPanelsMixin:
                        _number(self.react_secs, 1.2, *O.REACTION_LENGTH), corner, gain,
                        bool(self.react_border.get()))
         self.commit(f"Reaction added at {timeline.format_time(t, True)}.")
+
+    # ============================================================ phase A: drag and drop
+    def _react_drag_start(self, event, path: str):
+        self._rdrag = {"path": path, "x0": event.x_root, "y0": event.y_root, "ghost": None}
+
+    def _react_drag_motion(self, event):
+        d = getattr(self, "_rdrag", None)
+        if not d:
+            return
+        if d["ghost"] is None:
+            if abs(event.x_root - d["x0"]) + abs(event.y_root - d["y0"]) < 8:
+                return
+            ghost = tk.Toplevel(self.root)
+            ghost.overrideredirect(True)
+            try:
+                ghost.attributes("-alpha", 0.8)
+            except tk.TclError:
+                pass
+            picture = self._thumb(d["path"])
+            tk.Label(ghost, image=picture, text="Drop on the timeline", compound="top", background="#fff4e6",
+                     font=(self.base_font[0], 8)).pack() if picture is not None else \
+                tk.Label(ghost, text="Drop on the timeline", background="#fff4e6").pack()
+            d["ghost"] = ghost
+        d["ghost"].geometry(f"+{event.x_root + 12}+{event.y_root + 12}")
+        self._drop_time = self.timeline_time_at_root(event.x_root, event.y_root)
+        if self._drop_time is not None:
+            self.status(f"Let go to put it in at {timeline.format_time(self._drop_time, True)} of your cut.")
+        self.draw_timeline()
+
+    def _react_drag_drop(self, event):
+        d, self._rdrag = getattr(self, "_rdrag", None), None
+        self._drop_time = None
+        if not d or d["ghost"] is None:
+            return None
+        d["ghost"].destroy()
+        t = self.timeline_time_at_root(event.x_root, event.y_root)
+        self.draw_timeline()
+        if t is None:
+            self.status("Drop it on the timeline to put it in.")
+            return "break"
+        if not self.project.segments:
+            self.status("Add some moments to your cut first.")
+            return "break"
+        self.pick_reaction(d["path"])
+        self.add_reaction_at(d["path"], t)
+        return "break"
 
     def _play_around(self, segment_id: str):
         """Once the preview is rebuilt, play from just before the reaction to just after."""

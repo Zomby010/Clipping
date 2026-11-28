@@ -210,3 +210,77 @@ def validate(segments, durations: dict[str, float]) -> list[str]:
         if not (0.25 <= (seg.speed or 1.0) <= 4.0):
             problems.append(f"Moment {i}: speed must be between 0.25x and 4x.")
     return problems
+
+
+# ------------------------------------------------------------ dragging (phase A)
+SNAP_PIXELS = 8   # how close (on screen) an edge must come to snap
+
+
+def snap(t: float, targets, tolerance: float) -> tuple[float, float | None]:
+    """(time to use, the target it snapped to or None). ``tolerance`` is in seconds."""
+    best, best_gap = None, tolerance
+    for target in targets:
+        gap = abs(t - target)
+        if gap <= best_gap:
+            best, best_gap = target, gap
+    return (best, best) if best is not None else (t, None)
+
+
+def edges(segments, skip: int | None = None) -> list[float]:
+    """Every place a moment starts or ends in the finished video (skipping one moment)."""
+    out = []
+    for p in layout(segments):
+        if p.index == skip:
+            continue
+        out += [p.edit_start, p.edit_end]
+    return sorted(set(round(x, 4) for x in out))
+
+
+def drop_index(segments, moving: int, edit_time: float) -> int:
+    """Where a moment dragged to ``edit_time`` lands in the cut list: before the
+    first other moment whose middle is after that time."""
+    others = [p for p in layout(segments) if p.index != moving]
+    for n, p in enumerate(others):
+        if edit_time < (p.edit_start + p.edit_end) / 2:
+            return n
+    return len(others)
+
+
+class View:
+    """Which part of the edit the timeline shows: zoom 1 = the whole edit."""
+
+    MAX_ZOOM = 40.0
+
+    def __init__(self):
+        self.zoom = 1.0
+        self.start = 0.0
+
+    def span(self, total: float) -> float:
+        return max(0.01, total / self.zoom)
+
+    def clamp(self, total: float) -> None:
+        self.zoom = min(self.MAX_ZOOM, max(1.0, self.zoom))
+        self.start = min(max(0.0, self.start), max(0.0, total - self.span(total)))
+
+    def x_of(self, t: float, total: float, left: float, width: float) -> float:
+        return left + (t - self.start) / self.span(total) * width
+
+    def t_of(self, x: float, total: float, left: float, width: float) -> float:
+        return self.start + (x - left) / max(1.0, width) * self.span(total)
+
+    def zoom_at(self, factor: float, around: float, total: float) -> None:
+        """Zoom in (factor > 1) or out, keeping the time ``around`` where it is on screen."""
+        if total <= 0:
+            return
+        old = self.span(total)
+        frac = (around - self.start) / old if old else 0.0
+        self.zoom = min(self.MAX_ZOOM, max(1.0, self.zoom * factor))
+        self.start = around - frac * self.span(total)
+        self.clamp(total)
+
+    def show(self, t: float, total: float) -> None:
+        """Scroll so ``t`` is on screen (used to follow the playhead)."""
+        span = self.span(total)
+        if not (self.start <= t <= self.start + span):
+            self.start = t - span * 0.1
+            self.clamp(total)

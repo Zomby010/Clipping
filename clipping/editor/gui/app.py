@@ -45,6 +45,8 @@ from clipping.editor.gui.review_panels import ReviewPanelsMixin
 from clipping.editor.gui.reaction_panels import ReactionPanelsMixin
 from clipping.editor.gui.sound_panels import SoundPanelsMixin
 from clipping.editor.gui.text_panels import ScrollPage, TextPanelsMixin
+from clipping.editor.gui.place_panel import PlacePanelMixin
+from clipping.editor.gui.timeline_panel import LANES, LANE_H, LANE_LABEL_W, LANE_TOP, TimelineMixin  # noqa: F401
 
 APP_NAME = "Clip Editor"
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -71,8 +73,6 @@ COLORS = {
 
 LATER_TABS = ()   # every phase is built now
 
-LANES = ("Original video", "Moments", "Voice-over", "Music", "SFX", "Reactions", "Captions")
-LANE_LABEL_W, LANE_H, LANE_TOP = 112, 14, 3
 
 
 def load_settings() -> dict:
@@ -109,8 +109,9 @@ def ui_font(root) -> tuple[str, int]:
     return (family, 10)
 
 
-class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin):
+class EditorApp(TimelineMixin, PlacePanelMixin, TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPanelsMixin, ReviewPanelsMixin, PlatformPanelsMixin):
     APP_NAME = APP_NAME
+    COLORS = COLORS
 
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -212,17 +213,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPan
         self.progress = ttk.Progressbar(bar, length=260, maximum=1.0)
         self.progress.pack(side="right", padx=8)
 
-        head = ttk.Frame(outer, style="Page.TFrame")
-        ttk.Label(head, text="Timeline", style="Card.TLabel",
-                  font=(self.base_font[0], self.base_font[1], "bold")).pack(side="left")
-        ttk.Label(head, text="   Keys: Space = play/pause   ←/→ = 1 s   I / O = mark start / end",
-                  style="Help.TLabel").pack(side="left")
-        bottom = ttk.LabelFrame(outer, labelwidget=head, style="Card.TLabelframe", padding=6)
-        bottom.pack(side="bottom", fill="x", pady=(8, 0))
-        self.timeline = tk.Canvas(bottom, height=LANE_TOP + len(LANES) * (LANE_H + 2) + 2, background=COLORS["card"], highlightthickness=0)
-        self.timeline.pack(fill="x")
-        self.timeline.bind("<Configure>", lambda e: self.draw_timeline())
-        self.timeline.bind("<Button-1>", self._timeline_click)
+        self._build_timeline(outer, COLORS)   # phase A: gui/timeline_panel.py
 
         body = ttk.PanedWindow(outer, orient="horizontal")
         body.pack(fill="both", expand=True, pady=(8, 0))
@@ -392,6 +383,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPan
         for text, command in (("Mark start (I)", self.mark_start), ("Mark end (O)", self.mark_end),
                               ("Add moment", self.add_marked)):
             ttk.Button(marks, text=text, width=0, style="Small.TButton", command=command).pack(side="left", padx=(0, 4))
+        self._build_place_button(marks)   # phase A
         self.marks_var = tk.StringVar(value="Start: –   End: –")
         ttk.Label(parent, textvariable=self.marks_var, style="Help.TLabel").pack(anchor="w", pady=(2, 0))
         info = ttk.Frame(parent, style="Card.TFrame")
@@ -704,84 +696,6 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPan
             lines.append(f"{rec.get('at', '')[:16].replace('T', ' ')}: {os.path.basename(rec.get('path', ''))} "
                          f"({timeline.format_time(rec.get('length', 0))}, made in {rec.get('seconds_taken', '?')} s)")
         self.exports_var.set("\n".join(lines) or "Nothing exported yet.")
-
-    def draw_timeline(self):
-        c = self.timeline
-        c.delete("all")
-        w = max(200, c.winfo_width())
-        label_w, lane_h, top = LANE_LABEL_W, LANE_H, LANE_TOP
-        total = self.project.total_length
-        for row, name in enumerate(LANES):
-            y = top + row * (lane_h + 2)
-            c.create_text(8, y + lane_h / 2, text=name, anchor="w", fill=COLORS["muted"], font=(self.base_font[0], 9))
-            c.create_rectangle(label_w, y, w - 8, y + lane_h, fill=COLORS["lane"], outline="")
-        span = (w - 8 - label_w)
-        sel = self.selected_index()
-        self._draw_original_lane(c, span, sel)
-        if total <= 0:
-            return
-        moments_y = top + LANES.index("Moments") * (lane_h + 2)
-        for p in timeline.layout(self.project.segments):
-            x0 = label_w + p.edit_start / total * span
-            x1 = label_w + p.edit_end / total * span
-            chosen = p.index == sel
-            react = self.project.segments[p.index].reaction
-            c.create_rectangle(x0 + 1, moments_y + 1, x1 - 1, moments_y + lane_h - 1,
-                               fill=COLORS["react" if react else "seg"],
-                               outline=COLORS["react_line"] if react else COLORS["seg_sel" if chosen else "seg_line"],
-                               width=3 if chosen else 1, tags=(f"seg{p.index}",))
-            if x1 - x0 > 18:
-                c.create_text((x0 + x1) / 2, moments_y + lane_h / 2, text=str(p.index + 1), fill=COLORS["text"],
-                              font=(self.base_font[0], 9, "bold"))
-        # --- phase 3: Voice-over lane, one block per script line ---
-        vy = top + LANES.index("Voice-over") * (lane_h + 2)
-        for ln in S_script.visible(self.project):
-            x0 = label_w + ln["start"] / total * span
-            x1 = label_w + min(total, ln["end"]) / total * span
-            made = bool(ln.get("audio"))
-            c.create_rectangle(x0 + 1, vy + 1, max(x0 + 4, x1 - 1), vy + lane_h - 1,
-                               fill="#d3f9d8" if made else "#fff3bf", outline="#2f9e44" if made else "#e67700",
-                               tags=(f"line_{ln['id']}",))
-        # --- end phase 3 ---
-        self.draw_sound_lanes(c, label_w, lane_h, top, span, total)
-        cy = top + (len(LANES) - 1) * (lane_h + 2)
-        for cap in C.visible(self.project):
-            x0 = label_w + cap["start"] / total * span
-            x1 = label_w + cap["end"] / total * span
-            c.create_rectangle(x0 + 1, cy + 2, max(x0 + 3, x1 - 1), cy + lane_h - 2, fill="#d9e2f1", outline="#7a8db3")
-        extras = ([(0.0, float((self.project.hook or {}).get("seconds", 2.0)))] if (self.project.hook or {}).get("text") else [])
-        extras += [(o["start"], o["end"]) for o in self.project.overlays if o.get("type") == "text"]
-        for a, b in extras:
-            x0 = label_w + a / total * span
-            x1 = label_w + min(b, total) / total * span
-            c.create_rectangle(x0 + 1, cy + 4, max(x0 + 3, x1 - 1), cy + lane_h - 4, fill="#ffd8a8", outline="#e8590c")
-        if self.watch.get() == "cut" and self.player.path == self.preview_path:
-            x = label_w + min(1.0, self.player.time() / total) * span
-            c.create_line(x, moments_y, x, top + len(LANES) * (lane_h + 2), fill=COLORS["accent"], width=2,
-                          tags=("playhead",))
-
-    def _draw_original_lane(self, c, span, sel):
-        """The whole video you're cutting from, with the parts your moments use."""
-        src = self.project.source(self.current_source_id) if self.current_source_id else None
-        if src is None or not src.duration:
-            return
-        y = LANE_TOP + LANES.index("Original video") * (LANE_H + 2)
-
-        def x_of(t):
-            return LANE_LABEL_W + min(1.0, max(0.0, t / src.duration)) * span
-
-        for i, seg in enumerate(self.project.segments):
-            if seg.source_id != src.id:
-                continue
-            x0, x1 = x_of(seg.source_in), x_of(seg.source_out)
-            c.create_rectangle(x0, y + 1, max(x0 + 3, x1), y + LANE_H - 1, fill=COLORS["seg"],
-                               outline=COLORS["seg_line"], width=3 if i == sel else 1, tags=("original",))
-            if x1 - x0 > 18:
-                c.create_text((x0 + x1) / 2, y + LANE_H / 2, text=str(i + 1), fill=COLORS["text"],
-                              font=(self.base_font[0], 9, "bold"))
-        if self.watch.get() == "source" and self.player.path == src.path:
-            x = x_of(self.player.time())
-            c.create_line(x, y, x, y + LANE_H, fill=COLORS["accent_dark"], width=2, tags=("source_head",))
 
     # ========================================================== video files
     def add_video(self):
@@ -1189,48 +1103,6 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPan
         if self.watch.get() == "cut":
             self.player.set_overlay(self.safe_var.get())
 
-    def _timeline_click(self, event):
-        row = int((event.y - LANE_TOP) // (LANE_H + 2))
-        if row == LANES.index("Original video"):
-            self._original_lane_click(event.x)
-            return
-        # --- phase 3: a click on a Voice-over block selects that script line ---
-        if row == LANES.index("Voice-over"):
-            total = self.project.total_length
-            w = self.timeline.winfo_width()
-            if total > 0 and event.x >= LANE_LABEL_W:
-                t = (event.x - LANE_LABEL_W) / max(1, (w - 8 - LANE_LABEL_W)) * total
-                for ln in S_script.visible(self.project):
-                    if ln["start"] - 0.05 <= t <= max(ln["end"], ln["start"] + 0.3):
-                        self.select_line(ln["id"])
-                        return
-        # --- end phase 3 ---
-        total = self.project.total_length
-        w = self.timeline.winfo_width()
-        label_w = LANE_LABEL_W
-        if total <= 0 or event.x < label_w:
-            return
-        t = (event.x - label_w) / max(1, (w - 8 - label_w)) * total
-        hit = timeline.edit_to_source(self.project.segments, min(t, total - 1e-6))
-        if hit:
-            self.tree.selection_set(self.project.segments[hit[0]].id)
-            if self.watch.get() == "cut" and self.player.path == self.preview_path:
-                self.player.seek(t)
-
-    def _original_lane_click(self, x: float):
-        """Show that spot of the video you're cutting from."""
-        src = self.project.source(self.current_source_id) if self.current_source_id else None
-        if src is None or x < LANE_LABEL_W:
-            return
-        span = max(1, self.timeline.winfo_width() - 8 - LANE_LABEL_W)
-        t = min(1.0, (x - LANE_LABEL_W) / span) * src.duration
-        if self.watch.get() != "source" or self.player.path != src.path:
-            self.player.pause()
-            self.watch.set("source")
-            self.load_source(src, t)
-        else:
-            self.player.seek(t)
-
     # ============================================================ preview
     def _schedule_preview(self, now: bool = False):
         if hasattr(self, "_preview_after") and self._preview_after:
@@ -1442,6 +1314,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPan
             self.commit()
 
     def new_project(self):
+        self.leave_place()   # phase A
         title = simpledialog.askstring(APP_NAME, "Name for the new edit:", parent=self.root,
                                        initialvalue="Untitled edit")
         if title is None:
@@ -1500,6 +1373,7 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPan
         self.status(f"Started a new edit with {src.name}. Mark moments with I and O, or type them.")
 
     def open_project(self, path: str, quiet: bool = False):
+        self.leave_place()   # phase A
         try:
             project, folder = P.load(path)
         except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
@@ -1542,6 +1416,8 @@ class EditorApp(TextPanelsMixin, StoryPanelsMixin, ReactionPanelsMixin, SoundPan
         self.refresh_all()
         self._sync_source()
         self.status(note)
+        if self.placing:          # phase A: Undo while placing shows the change there
+            self._draw_place()
         if self.watch.get() == "cut":
             self._schedule_preview()
 

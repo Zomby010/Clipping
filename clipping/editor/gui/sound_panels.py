@@ -554,9 +554,10 @@ class SoundPanelsMixin:
             self.logo_info.set("No logo. Logos go in assets/logos/, one per channel.")
 
     # ============================================================ timeline lanes
-    def draw_sound_lanes(self, c, label_w, lane_h, top, span, total):
+    def draw_sound_lanes(self, c, place, lane_h, top, total):
+        """``place(t)`` is the timeline's x for edit time t (it zooms, phase A)."""
         def x_of(t):
-            return label_w + max(0.0, min(total, t)) / total * span
+            return place(max(0.0, min(total, t)))
 
         def lane_y(name):
             from clipping.editor.gui.app import LANES

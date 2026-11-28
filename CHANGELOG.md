@@ -11,6 +11,16 @@ All notable changes to the **OpenSource Clipping** project will be documented in
 ## [Unreleased]
 
 ### Added
+- Clip Editor phase A, **easier editing**:
+  - Timeline: drag a moment's edges to trim it and its middle to move it; zoom with Ctrl + wheel or − / + / Fit, scroll when zoomed; edges snap to the playhead and the other moments (Shift or the **Snap** box turns it off); Esc cancels; one Undo step per drag. The buttons are unchanged.
+  - Faster previews: each moment is cached in `<edit>/Preview/pieces/`, joined without re-encoding, then one pass adds text, reactions, logo and the sound mix. On a 37 s cut of 6 moments the wait after trimming a moment went from about 12 s to 6 s, after a text change from 12 s to 4 s, and after moving a moment from 12 s to 5 s; the very first preview takes about the same as before (13 to 15 s). The export is still one pass from the original videos.
+  - **Place on video**: drag the hook, pop-ups, arrows, circles, corner reactions and the logo on a still of the cut to move them, and drag the corner to resize; right-click puts one back. New optional fields: hook and pop-up `x`, `y`, `scale`; corner reaction `x`, `y`, `width`; logo `x`, `y`. Without them everything renders exactly as before.
+  - Drag a reaction thumbnail from the Reactions picker onto the timeline to put it in there.
+
+### Changed
+- Clip Editor: pop-up text is now anchored to its moment (like captions and sound effects), so it follows when moments are dragged, trimmed or reordered. Pop-ups in older edits are anchored where they show, so those edits look the same.
+
+### Added
 - Clip Editor, **reactions inside your cut**: put a reaction (video, GIF or picture) in at any point of My cut. The moment there is split, the reaction plays in between, and the video gets longer by its length. Move it, make it shorter or longer, or delete it (the split halves join again).
 - Clip Editor **Reactions** tab: thumbnail picker by mood, **★ Favourites**, **Play**, **Add your own…**. Pictures and GIFs in `assets/reactions/` are now listed, not only videos.
 - Clip Editor: **Replace it completely** silences the original sound; **Use my own picture…** for the cover; **Open in a big window** shows the whole script.

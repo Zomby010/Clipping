@@ -168,19 +168,47 @@ def caption_events(project, st: S.CaptionStyle) -> list[str]:
 HOOK_ANIMATIONS = (("pop", "Pop"), ("bounce", "Bounce"), ("slide", "Slide down"), ("shake", "Shake"))
 
 
-def hook_effect(anim: str, w: int, h: int) -> str:
-    """The .ass tags that bring the hook in."""
+def _sc(value: float, scale: float) -> str:
+    return f"{round(value * scale):d}"
+
+
+def hook_effect(anim: str, w: int, h: int, place: "tuple[float, float] | None" = None,
+                scale: float = 1.0) -> str:
+    """The .ass tags that bring the hook in. ``place`` is where you dragged it
+    ((x, y) fractions of the top-middle of the text; None = the usual spot) and
+    ``scale`` how much bigger you made it (phase A)."""
+    pos = ""
+    if place is not None:
+        pos = f"\\an8\\pos({int(place[0] * w)},{int(place[1] * h)})"
     if anim == "bounce":
-        return ("\\fscx40\\fscy40\\t(0,140,\\fscx118\\fscy118)\\t(140,240,\\fscx92\\fscy92)"
-                "\\t(240,330,\\fscx100\\fscy100)")
+        return (pos + f"\\fscx{_sc(40, scale)}\\fscy{_sc(40, scale)}\\t(0,140,\\fscx{_sc(118, scale)}\\fscy{_sc(118, scale)})"
+                f"\\t(140,240,\\fscx{_sc(92, scale)}\\fscy{_sc(92, scale)})"
+                f"\\t(240,330,\\fscx{_sc(100, scale)}\\fscy{_sc(100, scale)})")
     if anim == "slide":
-        x, y = w // 2, int(0.12 * h)
-        return f"\\an8\\move({x},{-int(0.1 * h)},{x},{y},0,260)"
+        x, y = (w // 2, int(0.12 * h)) if place is None else (int(place[0] * w), int(place[1] * h))
+        size = "" if abs(scale - 1) < 1e-3 else f"\\fscx{_sc(100, scale)}\\fscy{_sc(100, scale)}"
+        return f"\\an8\\move({x},{-int(0.1 * h)},{x},{y},0,260){size}"
     if anim == "shake":
         steps = "".join(f"\\t({t},{t + 60},\\frz{a})" for t, a in
                         zip(range(0, 420, 60), (5, -5, 4, -4, 2, -2, 0)))
-        return steps
-    return "\\fscx70\\fscy70\\t(0,160,\\fscx100\\fscy100)"
+        size = "" if abs(scale - 1) < 1e-3 else f"\\fscx{_sc(100, scale)}\\fscy{_sc(100, scale)}"
+        return pos + size + steps
+    return pos + f"\\fscx{_sc(70, scale)}\\fscy{_sc(70, scale)}\\t(0,160,\\fscx{_sc(100, scale)}\\fscy{_sc(100, scale)})"
+
+
+def hook_place(hook: dict) -> "tuple[float, float] | None":
+    """Where the hook was dragged to, or None for its usual spot."""
+    if "x" in (hook or {}) and "y" in hook:
+        return float(hook["x"]), float(hook["y"])
+    return None
+
+
+def item_scale(item: dict) -> float:
+    """How much bigger or smaller a hook or pop-up was made by dragging its corner."""
+    try:
+        return min(3.0, max(0.4, float((item or {}).get("scale", 1.0))))
+    except (TypeError, ValueError):
+        return 1.0
 
 
 def emoji_motion(anim: str, x: int, y: int) -> tuple[str, str]:
@@ -222,8 +250,16 @@ def spot(position) -> tuple[float, float]:
     return GRID_X[c], GRID_Y[r]
 
 
+def popup_xy(o: dict) -> tuple[float, float]:
+    """Centre of a pop-up: where you dragged it, else its grid spot."""
+    if "x" in o and "y" in o:
+        return float(o["x"]), float(o["y"])
+    return spot(o.get("position", "middle"))
+
+
 def popups(project) -> list[dict]:
-    return [o for o in project.overlays if o.get("type") == "text"]
+    """Pop-up text that shows (one whose moment was deleted is hidden; undo brings it back)."""
+    return [o for o in project.overlays if o.get("type") == "text" and o.get("visible", True)]
 
 
 def build_ass(project, w: int, h: int) -> str | None:
@@ -238,15 +274,17 @@ def build_ass(project, w: int, h: int) -> str | None:
         look = "HookBox" if hook.get("box") else "Hook"
         events.append(
             f"Dialogue: 1,{ass_time(0)},{ass_time(secs)},{look},,0,0,0,,"
-            f"{{{hook_effect(hook.get('anim', 'pop'), w, h)}}}{ass_text(_case(hook_text, S.HOOK_STYLE))}")
+            f"{{{hook_effect(hook.get('anim', 'pop'), w, h, hook_place(hook), item_scale(hook))}}}{ass_text(_case(hook_text, S.HOOK_STYLE))}")
     for o in popups(project):
         text = split_emoji(o.get("text", ""))[0]
         if not text:
             continue
-        fx, fy = spot(o.get("position", "middle"))
+        fx, fy = popup_xy(o)
+        k = item_scale(o)
         events.append(
             f"Dialogue: 2,{ass_time(o['start'])},{ass_time(o['end'])},Popup,,0,0,0,,"
-            f"{{\\an5\\pos({int(fx * w)},{int(fy * h)})\\fscx70\\fscy70\\t(0,120,\\fscx100\\fscy100)}}"
+            f"{{\\an5\\pos({int(fx * w)},{int(fy * h)})\\fscx{_sc(70, k)}\\fscy{_sc(70, k)}"
+            f"\\t(0,120,\\fscx{_sc(100, k)}\\fscy{_sc(100, k)})}}"
             f"{ass_text(_case(text, S.POPUP_STYLE))}")
     if not events:
         return None
@@ -297,20 +335,22 @@ def emoji_marks(project, w: int, h: int, workdir: str, font_path: str | None) ->
     hook_plain, hook_emoji = split_emoji(hook.get("text", ""))
     if hook_emoji:
         secs = hook_seconds(hook)
-        size = int(S.HOOK_STYLE.size * h / 1920)
+        size = int(S.HOOK_STYLE.size * h / 1920 * item_scale(hook))
         # Below the hook text: estimate how many lines it wraps to.
         chars_per_line = max(6, int((0.84 * w) / (0.52 * size)))
         lines = max(1, -(-len(hook_plain) // chars_per_line)) if hook_plain else 0
-        cy = int(0.12 * h + lines * size * 1.15 + size * 0.7)
+        hx, hy = hook_place(hook) or (0.5, 0.12)
+        cy = int(hy * h + lines * size * 1.15 + size * 0.7)
         # Emoji on their own get the box; with words, the words already have it.
         boxed = box_colour(hook) if hook.get("box") and not hook_plain else ""
-        wanted.append((hook_emoji, w // 2, cy, int(size * 1.1), 0.0, secs, hook.get("anim", "pop"), boxed))
+        cx = w // 2 if hook_place(hook) is None else int(hx * w)
+        wanted.append((hook_emoji, cx, cy, int(size * 1.1), 0.0, secs, hook.get("anim", "pop"), boxed))
     for o in popups(project):
         plain, emoji = split_emoji(o.get("text", ""))
         if not emoji:
             continue
-        fx, fy = spot(o.get("position", "middle"))
-        size = int(S.POPUP_STYLE.size * h / 1920)
+        fx, fy = popup_xy(o)
+        size = int(S.POPUP_STYLE.size * h / 1920 * item_scale(o))
         cy = int(fy * h - (size * 1.2 if plain else 0))
         wanted.append((emoji, int(fx * w), cy, int(size * 1.15), float(o["start"]), float(o["end"]), "", ""))
     if not wanted:

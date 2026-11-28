@@ -1,0 +1,119 @@
+<title>Clip Editor Phase A Tests</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap">
+<style>
+/* Layout: one column checklist, sticky tally on top, grouped by phase. Same look as the phase test pages. */
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#5d6779;--line:#dde1e8;--accent:#c2410c;--pass:#18794e;--fail:#c0262d;--on:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10141c;--card:#181e29;--fg:#eef0f5;--muted:#9aa4b6;--line:#2c3445;--accent:#ff8a4c;--pass:#4cc38a;--fail:#ff7b72;--on:#10141c;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 Inter,system-ui,sans-serif;padding-block:0 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:760px;margin:0 auto}
+h1,h2{font-family:"Space Grotesk",Inter,sans-serif;text-wrap:balance}
+h1{font-size:28px;margin:24px 0 4px}
+h2{font-size:18px;margin:28px 0 4px}
+p{margin:4px 0 8px;color:var(--muted)}
+code{overflow-wrap:anywhere;color:var(--fg);font-size:13px}
+#bar{position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;z-index:2;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:4px 16px}
+#save{color:var(--muted)}#save.err{color:var(--fail)}
+.t{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 8px}
+.t b{color:var(--accent);font-variant-numeric:tabular-nums}
+.exp{color:var(--muted)}
+.ctl{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+button{font:600 13px Inter,sans-serif;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:7px;padding:6px 14px;cursor:pointer}
+button.p[aria-pressed="true"]{background:var(--pass);border-color:var(--pass);color:var(--on)}
+button.f[aria-pressed="true"]{background:var(--fail);border-color:var(--fail);color:var(--on)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input{flex:1 1 200px;min-width:0;font:inherit;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button:disabled,input:disabled{opacity:.5;cursor:default}
+</style>
+<main>
+<h1>Clip Editor: phase A tests</h1>
+<p>Easier editing: drag on the timeline, faster previews, Place on video, drag a reaction in. Mark each Pass or Fail and note what you saw.</p>
+<p>Switch first: <code>git fetch origin && git checkout claude/clip-editor-phase-a</code>, then <code>python clip_editor.py</code>. Use any edit with three or more moments.</p>
+<div id="bar"><span id="tally"></span><span id="save" role="status">Loading your saved marks…</span></div>
+<div id="list"></div>
+</main>
+<script>
+// Ids are the saved keys: never renumber an existing one.
+const GROUPS=[
+["A1: drag on the timeline","Watch My cut so the playhead shows on the timeline.",[
+["A.1","Point at the right edge of a moment on the Moments lane, drag it left, let go","The cursor shows ↔, a dashed box shows the new length while you drag, and the moment is shorter after; the moments after it close up"],
+["A.2","Drag the left edge of a moment to the right, then to the left past where it started","The moment starts later, then earlier (it can grow back into its video)"],
+["A.3","Drag an edge close to the playhead or to another moment's edge","It jumps onto it and the status line says snapped"],
+["A.4","Do the same while holding Shift, then with Snap unticked","It does not jump"],
+["A.5","Drag the middle of moment 3 to the front of the timeline","A blue line shows where it lands; moment 3 becomes moment 1"],
+["A.6","Start a drag, press Esc, then let go","Nothing changes"],
+["A.7","After each drag press Undo once","Each drag is undone in one step"],
+["A.8","Ctrl + mouse wheel over the timeline, then the wheel, the bar under it, − / + and Fit","It zooms around the mouse, scrolls, and Fit shows the whole cut again"],
+["A.9","Zoom in and play My cut","The view follows the playhead"],
+["A.10","Click a moment without dragging","It is selected and the player jumps there, as before"],
+["A.11","Trim and move moments that have captions, voice lines, a sound effect, a pop-up and a reaction","Each stays with its words and moment"],
+["A.12","Move up / Move down and Start/End ±0.1 buttons","Still work as before"]]],
+["A2: faster previews","Same edit.",[
+["A.13","Trim one moment and time how long until My cut shows it","Noticeably quicker than before (about half the wait or less)"],
+["A.14","Change only the hook text","The new preview comes quickly, faster than after a trim"],
+["A.15","Play the new preview through","Picture and sound match what you expect, with no jumps at the joins"],
+["A.16","Export and compare with the preview","The export looks and sounds the same as the preview"]]],
+["A3: Place on video","Add a hook, a pop-up, an arrow, a corner reaction and a logo, and move the player to where they show.",[
+["A.17","Press Place on video","The video is replaced by a still with a box and name around each thing"],
+["A.18","Drag the hook, the pop-up, the arrow, the corner reaction and the logo somewhere else","Each box follows the mouse"],
+["A.19","Drag the corner square of each box","Each gets bigger or smaller"],
+["A.20","Right-click one box","It goes back to its usual spot and size"],
+["A.21","Press Undo, then Redo","The last change is undone and redone on the still"],
+["A.22","Press Done placing (or Esc) and watch My cut","Everything shows where you put it, at the size you set"],
+["A.23","Export","The exported video has them in the same places"],
+["A.24","Open an older edit made before this change","Everything is where it was before; nothing moved"]]],
+["A4: drag a reaction in","Open Reactions and pick a mood.",[
+["A.25","With In between picked, drag a thumbnail onto the timeline and let go in the middle of a moment","A purple line shows where; the moment splits and the reaction plays there"],
+["A.26","With Over my video, full screen picked, drag one in","It shows full screen at that spot, the video gets no longer"],
+["A.27","Drag one and let go outside the timeline","Nothing is added and the status line says to drop it on the timeline"]]],
+["Window","",[
+["A.28","Use the app at 1366x768 (or smaller) and open every tab","The timeline, with its − / + / Fit row and scroll bar, stays on screen"]]]
+];
+
+const list=document.getElementById('list'),save=document.getElementById('save'),tally=document.getElementById('tally');
+const rows={},state={},queue={};
+let db=null;
+const say=(t,err)=>{save.textContent=t;save.className=err?'err':''};
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e};
+for(const [name,about,tests] of GROUPS){
+  list.append(el('h2','',name),el('p','',about));
+  for(const [num,act,exp] of tests){
+    const id='p'+num.replace('.','-');
+    state[id]={status:'',note:''};
+    const box=el('div','t'),body=el('div'),ctl=el('div','ctl');
+    body.append(el('div','',act),el('div','exp','Pass if: '+exp));
+    const p=el('button','p','Pass'),f=el('button','f','Fail'),note=el('input');
+    note.id='note-'+id;note.placeholder='What did you see?';note.setAttribute('aria-label','Note for test '+num);
+    for(const [b,v] of [[p,'pass'],[f,'fail']]){b.type='button';b.disabled=true;b.onclick=()=>{state[id].status=state[id].status===v?'':v;paint(id);write(id)}}
+    note.disabled=true;note.onchange=()=>{state[id].note=note.value;write(id)};
+    ctl.append(p,f,note);box.append(el('b','',num),body,ctl);list.append(box);
+    rows[id]={p,f,note};
+  }
+}
+function paint(id){
+  const r=rows[id],s=state[id];
+  r.p.setAttribute('aria-pressed',s.status==='pass');r.f.setAttribute('aria-pressed',s.status==='fail');
+  if(document.activeElement!==r.note)r.note.value=s.note;
+  const all=Object.values(state),pass=all.filter(x=>x.status==='pass').length,fail=all.filter(x=>x.status==='fail').length;
+  tally.textContent=`${pass} passed · ${fail} failed · ${all.length-pass-fail} to do`;
+}
+function write(id){
+  say('Saving…');
+  const data={status:state[id].status,note:state[id].note,at:Date.now()};
+  queue[id]=(queue[id]||Promise.resolve()).then(()=>db.collection('results').doc(id).set(data))
+    .then(()=>say('Saved'),e=>say('Not saved ('+((e&&e.code)||'unknown')+'). Mark it again, or tell Claude in the terminal.',true));
+}
+Object.keys(rows).forEach(paint);
+(async()=>{
+  const timer=setTimeout(()=>say('Saved marks did not load. Open this page signed in to claude.ai.',true),10000);
+  try{db=await claude.use('db')}catch(e){}
+  if(!db){clearTimeout(timer);say('Marks cannot be saved in this view. Open this page signed in to claude.ai.',true);return}
+  db.collection('results').onSnapshot(snap=>{
+    clearTimeout(timer);
+    snap.docs.forEach(d=>{if(state[d.id]){const v=d.data();state[d.id]={status:v.status||'',note:v.note||''};paint(d.id)}});
+    Object.values(rows).forEach(r=>r.p.disabled=r.f.disabled=r.note.disabled=false);
+    say('Saved');
+  },e=>{clearTimeout(timer);say('Could not load your marks ('+((e&&e.code)||'unknown')+').',true)});
+})();
+</script>

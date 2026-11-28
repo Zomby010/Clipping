@@ -263,6 +263,27 @@ class Project:
         else:
             raise ValueError("edge must be 'in' or 'out'")
 
+    def trim_to(self, index: int, edge: str, source_time: float) -> None:
+        """Set a moment's start or end to ``source_time`` (phase A: dragging an
+        edge on the timeline). Kept inside its video and at least 0.1 s long.
+        An inserted reaction has no "video time": its edges set its length."""
+        seg = self.segments[index]
+        seg.whole_clip = False
+        if seg.reaction:
+            from clipping.editor import reactions
+            lo, hi = reactions.SECONDS
+            seg.source_in = 0.0
+            seg.source_out = round(min(hi, max(lo, source_time)), 3)
+            return
+        src = self.source(seg.source_id)
+        limit = src.duration if src and src.duration else float("inf")
+        if edge == "in":
+            seg.source_in = round(min(max(0.0, source_time), seg.source_out - 0.1), 3)
+        elif edge == "out":
+            seg.source_out = round(max(min(limit, source_time), seg.source_in + 0.1), 3)
+        else:
+            raise ValueError("edge must be 'in' or 'out'")
+
     # ---------------------------------------------------------------- files
     def to_dict(self) -> dict:
         return asdict(self)

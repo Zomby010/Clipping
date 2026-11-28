@@ -128,7 +128,7 @@ def checks(project, emoji_font: str | None | bool = "auto") -> list[Finding]:
     w, h = 1080, 1920
     for o in project.overlays:
         if o.get("type") == "text":
-            fx, fy = text_layers.spot(o.get("position", "middle"))
+            fx, fy = text_layers.popup_xy(o)
             if not _inside_safe(fx * w - 1, fy * h - 1, fx * w + 1, fy * h + 1):
                 out.append(Finding(WARNING, f"The pop-up \"{o.get('text', '')}\" sits under the platform buttons.",
                                    "popup_middle", "Move it to the middle", o.get("id") or str(id(o))))
@@ -236,6 +236,8 @@ def apply_fix(project, finding: Finding) -> bool:
             if (o.get("id") or str(id(o))) == finding.target:
                 if fix == "popup_middle":
                     o["position"] = "1,1"
+                    o.pop("x", None)   # a spot you dragged it to (phase A) gives way
+                    o.pop("y", None)
                 else:
                     o["x"], o["y"] = 0.46, 0.42
                 break

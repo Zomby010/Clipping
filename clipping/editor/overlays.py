@@ -153,6 +153,9 @@ def refresh(project) -> None:
         if start is not None:
             fx["start"] = start
     for o in project.overlays:
+        if o.get("type") == "text":
+            _refresh_popup(project, o, total)
+            continue
         if o.get("type") not in ANCHORED:
             continue
         start = _place(project, o)
@@ -161,6 +164,24 @@ def refresh(project) -> None:
             o["start"] = start
             o["end"] = round(min(total, start + float(o.get("length", 1.5))), 3)
     sfx_items(project).sort(key=lambda f: f.get("start", 0))
+
+
+def _refresh_popup(project, o: dict, total: float) -> None:
+    """Pop-up text follows its moment too (phase A: moments can now be dragged).
+    A pop-up from an older edit is anchored where it shows now, so it looks the same."""
+    if not project.segments:
+        return
+    if not o.get("segment_id"):
+        try:
+            o["segment_id"], o["src_time"] = anchor_at(project, float(o.get("start", 0.0)))
+        except ValueError:
+            return
+        o["length"] = round(max(0.3, float(o.get("end", 0.0)) - float(o.get("start", 0.0))), 3)
+    start = _place(project, o)
+    o["visible"] = start is not None and start < total - 0.05
+    if start is not None:
+        o["start"] = start
+        o["end"] = round(min(total, start + float(o.get("length", 1.5))), 3)
 
 
 def sfx_items(project) -> list[dict]:
@@ -265,6 +286,19 @@ def corner_rect(position: str, w: int, h: int) -> tuple[int, int, int, int]:
     return left + pad, top + pad, bw, bh
 
 
+def reaction_rect(item: dict, w: int, h: int) -> tuple[int, int, int, int]:
+    """(x, y, box_w, box_h) of a corner reaction: where you dragged it and how
+    wide you made it (phase A), else its named corner."""
+    if "x" in item and "y" in item:
+        frac = min(0.9, max(0.12, float(item.get("width", CORNER_WIDTH))))
+        bw = max(16, round(frac * w) // 2 * 2)
+        bh = bw
+        x = round(min(max(0.0, float(item["x"])), 1.0) * w)
+        y = round(min(max(0.0, float(item["y"])), 1.0) * h)
+        return min(x, w - bw) // 2 * 2, min(y, h - bh) // 2 * 2, bw, bh
+    return corner_rect(item.get("position", "top-left"), w, h)
+
+
 def rounded_mask(size: tuple[int, int], out_png: str, radius_frac: float = 0.12) -> str:
     from PIL import Image, ImageDraw
     img = Image.new("L", size, 0)
@@ -325,6 +359,10 @@ def mark_xy(item: dict, w: int, h: int, side: int) -> tuple[int, int]:
 def logo_rect(logo: dict, w: int, h: int, img_size: tuple[int, int]) -> tuple[int, int, int, int]:
     lw = max(8, int(float(logo.get("size", 0.16)) * w)) // 2 * 2
     lh = max(2, int(lw * img_size[1] / max(1, img_size[0])) // 2 * 2)
+    if "x" in logo and "y" in logo:      # dragged on the video (phase A)
+        x = round(min(max(0.0, float(logo["x"])), 1.0) * w)
+        y = round(min(max(0.0, float(logo["y"])), 1.0) * h)
+        return min(x, w - lw), min(y, h - lh), lw, lh
     left, top, _r, _b = safe_box(w, h)
     pad = int(0.02 * w)
     if logo.get("corner") == "top-middle":
@@ -388,7 +426,7 @@ def prepare(project, w: int, h: int, workdir: str) -> VisualLayers:
         clip = ReactionClip(o["path"], o.get("style", "cutaway"), float(o["start"]), float(o["end"]),
                             float(o.get("gain", 0.9)), _has_audio(o["path"]))
         if clip.style == "corner":
-            x, y, bw, bh = corner_rect(o.get("position", "top-left"), w, h)
+            x, y, bw, bh = reaction_rect(o, w, h)
             clip.rect = (x, y, bw, bh)
             clip.mask_png = rounded_mask((bw, bh), os.path.join(workdir, f"mask{n}.png"))
             if o.get("border", True):

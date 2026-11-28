@@ -168,8 +168,12 @@ def _dip_expression(voices: list[dict], depth: float = EXPLAIN_DIP, fade: float 
 def build_command(project: Project, out_path: str, q: Quality = EXPORT,
                   layers: "text_layers.TextLayers | None" = None,
                   visuals: "overlays.VisualLayers | None" = None,
-                  voices: "list[dict] | None" = None) -> list[str]:
+                  voices: "list[dict] | None" = None, pieces: "list[str] | None" = None,
+                  joined: "str | None" = None) -> list[str]:
     """The full ffmpeg command for this edit (no progress flags).
+    ``pieces`` (preview only, phase A) are the moments already made by
+    ``make_pieces``, used instead of cutting them from the videos again;
+    ``joined`` (preview only) is those pieces already joined into one file.
     ``layers`` adds captions / hook / pop-ups (.ass) and emoji pictures;
     ``visuals`` adds reaction clips, arrows, circles and the logo (phase 4).
     ``voices`` is ``voice.voice_clips(project)``, the voice-over lines (phase 3;
@@ -182,25 +186,33 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
         raise RenderError(problems[0])
     cmd = ["ffmpeg", "-hide_banner", "-y"]
     parts = []
-    for i, seg in enumerate(project.segments):
-        src = project.source(seg.source_id)
-        if seg.reaction:
-            cmd += reactions.input_args(src.path, seg.source_out - seg.source_in, q.fps)
+    if joined is not None:                  # phase A: the whole cut, joined from its pieces
+        cmd += ["-i", joined]
+        # The joined file already starts at 0 at the right frame rate. (setpts=PTS-STARTPTS
+        # here froze the picture after a still-picture reaction, so it is left out.)
+        parts.append("[0:v]format=yuv420p,setsar=1[vcat]")
+        parts.append(f"[0:a]apad,atrim=0:{_num(project.total_length)}[acat]")
+        pieces = []
+    if pieces is not None and joined is None and len(pieces) != len(project.segments):
+        raise RenderError("The preview pieces don't match the cut list.")
+    for i, seg in enumerate(project.segments if joined is None else []):
+        if pieces is not None:              # phase A: a moment made earlier (preview only)
+            cmd += ["-i", pieces[i]]
         else:
-            cmd += ["-ss", _num(seg.source_in), "-t", _num(seg.source_out - seg.source_in), "-i", src.path]
-    # --- phase 3: voice ---
-    talk_cut = REMOVE_TALKING.get((project.voices or {}).get("remove_talking") or "", "")
-    # --- end phase 3 ---
-    for i, seg in enumerate(project.segments):
-        src = project.source(seg.source_id)
-        parts.append(video_filter(seg, src, q, f"[{i}:v]", f"[v{i}]"))
-        parts.append(audio_filter(seg, src, i, f"[a{i}]",
-                                  level=original_level(project, seg),
-                                  remove_talking="" if seg.reaction else talk_cut))
+            cmd += segment_input_args(project, seg, q)
+    for i, seg in enumerate(project.segments if joined is None else []):
+        if pieces is not None:
+            parts.append(f"[{i}:v]setpts=PTS-STARTPTS,fps={q.fps},format=yuv420p,setsar=1[v{i}]")
+            parts.append(f"[{i}:a]asetpts=PTS-STARTPTS,apad,atrim=0:{_num(seg.length)},asetpts=PTS-STARTPTS[a{i}]")
+        else:
+            parts += segment_filters(project, seg, q, i)
     n = len(project.segments)
     k = n  # next input number
-    joined = "".join(f"[v{i}][a{i}]" for i in range(n))
-    parts.append(f"{joined}concat=n={n}:v=1:a=1[vcat][acat]")
+    if joined is None:
+        both = "".join(f"[v{i}][a{i}]" for i in range(n))
+        parts.append(f"{both}concat=n={n}:v=1:a=1[vcat][acat]")
+    else:
+        k = 1
     last = "vcat"
     reaction_inputs = []
     # --- phase 4: reactions, arrows and circles, logo (under the text) ---
@@ -243,20 +255,9 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
             cmd += ["-i", visuals.logo.png]
             parts.append(f"[{last}][{k}:v]overlay=x={visuals.logo.x}:y={visuals.logo.y}:eof_action=repeat[vlogo]")
             last, k = "vlogo", k + 1
-    if layers is not None and layers.ass_path:
-        opts = f"filename={_filter_path(layers.ass_path)}"
-        if layers.fonts_dir:
-            opts += f":fontsdir={_filter_path(layers.fonts_dir)}"
-        parts.append(f"[{last}]ass={opts}[vass]")
-        last = "vass"
-    for e, mark in enumerate(layers.emojis if layers is not None else []):
-        cmd += ["-i", mark.png]
-        x, y = text_layers.emoji_motion(mark.anim, mark.x, mark.y)
-        if mark.anim:
-            x, y = f"'{x}'", f"'{y}'"
-        parts.append(f"[{last}][{k}:v]overlay=x={x}:y={y}:eof_action=repeat:"
-                     f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[ve{e}]")
-        last, k = f"ve{e}", k + 1
+    extra_in, text_parts, last, k = _text_filters(layers, last, k)
+    cmd += extra_in
+    parts += text_parts
     parts.append(f"[{last}]null[vout]")
     # --- phase 3 + 4: sound (original, voices, music, sound effects, loudness) ---
     if voices is None:
@@ -285,6 +286,44 @@ def build_command(project: Project, out_path: str, q: Quality = EXPORT,
         cmd += ["-profile:v", "high"]
     cmd.append(out_path)
     return cmd
+
+
+def segment_input_args(project: Project, seg: Segment, q: Quality) -> list[str]:
+    """ffmpeg input options that read one moment from its video (fast seek)."""
+    src = project.source(seg.source_id)
+    if seg.reaction:
+        return reactions.input_args(src.path, seg.source_out - seg.source_in, q.fps)
+    return ["-ss", _num(seg.source_in), "-t", _num(seg.source_out - seg.source_in), "-i", src.path]
+
+
+def segment_filters(project: Project, seg: Segment, q: Quality, i: int) -> list[str]:
+    """The picture and sound chains of one moment, input ``i``, giving [v<i>] and [a<i>]."""
+    src = project.source(seg.source_id)
+    talk_cut = REMOVE_TALKING.get((project.voices or {}).get("remove_talking") or "", "")   # phase 3
+    return [video_filter(seg, src, q, f"[{i}:v]", f"[v{i}]"),
+            audio_filter(seg, src, i, f"[a{i}]", level=original_level(project, seg),
+                         remove_talking="" if seg.reaction else talk_cut)]
+
+
+def _text_filters(layers, last: str, k: int) -> tuple[list[str], list[str], str, int]:
+    """(inputs, filters, last label, next input) that burn in captions, hook,
+    pop-ups (.ass) and emoji pictures over [last]."""
+    cmd, parts = [], []
+    if layers is not None and layers.ass_path:
+        opts = f"filename={_filter_path(layers.ass_path)}"
+        if layers.fonts_dir:
+            opts += f":fontsdir={_filter_path(layers.fonts_dir)}"
+        parts.append(f"[{last}]ass={opts}[vass]")
+        last = "vass"
+    for e, mark in enumerate(layers.emojis if layers is not None else []):
+        cmd += ["-i", mark.png]
+        x, y = text_layers.emoji_motion(mark.anim, mark.x, mark.y)
+        if mark.anim:
+            x, y = f"'{x}'", f"'{y}'"
+        parts.append(f"[{last}][{k}:v]overlay=x={x}:y={y}:eof_action=repeat:"
+                     f"enable='between(t,{_num(mark.start)},{_num(mark.end)})'[ve{e}]")
+        last, k = f"ve{e}", k + 1
+    return cmd, parts, last, k
 
 
 def _overlay_input(r, fps: int) -> list[str]:
@@ -412,30 +451,202 @@ def edit_fingerprint(project: Project, q: Quality, voices: "list[dict] | None" =
     return hashlib.sha1(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
+# ---------------------------------------------------------------- phase A: faster previews
+# The preview is made in three steps, each cached on its own, so a change only
+# redoes what it touches:
+#   pieces   each moment cut, framed and sped up (Preview/pieces/)
+#   joined   the pieces put one after another, without re-encoding (instant)
+#   preview  one pass over the joined file: reactions, arrows, logo, text and the sound mix
+# The export still makes everything in one pass from the original videos, with
+# the same filters, so it looks and sounds the same.
+PIECE_QUALITY = Quality(PREVIEW.width, PREVIEW.height, "ultrafast", 20, "96k")
+KEEP_PIECES = 80
+PIECE_WORKERS = 2
+
+
+def piece_fingerprint(project: Project, seg: Segment, q: Quality = PIECE_QUALITY) -> str:
+    """What changes how one moment looks and sounds on its own."""
+    src = project.source(seg.source_id)
+    own = {k: v for k, v in seg.__dict__.items()
+           if k not in ("id", "note", "captioned", "whole_clip", "split_here", "framing")}
+    data = {
+        "seg": own, "framing": seg.framing.__dict__,
+        "src": [src.path, os.path.getmtime(src.path) if os.path.exists(src.path) else 0,
+                src.width, src.height, src.has_audio],
+        "level": original_level(project, seg),
+        "talk_cut": "" if seg.reaction else (project.voices or {}).get("remove_talking") or "",
+        "q": [q.width, q.height, q.preset, q.crf, q.fps],
+    }
+    return hashlib.sha1(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def piece_command(project: Project, seg: Segment, out_path: str, q: Quality = PIECE_QUALITY) -> list[str]:
+    """ffmpeg command that makes one moment on its own (same filters as the export)."""
+    one = Project.from_dict(project.to_dict())
+    one.segments = [s for s in one.segments if s.id == seg.id]
+    return ["ffmpeg", "-hide_banner", "-y", *segment_input_args(one, one.segments[0], q),
+            "-filter_complex", ";".join(segment_filters(one, one.segments[0], q, 0)),
+            "-map", "[v0]", "-map", "[a0]",
+            "-c:v", "libx264", "-preset", q.preset, "-crf", str(q.crf), "-pix_fmt", "yuv420p",
+            "-r", str(q.fps), "-c:a", "pcm_s16le", "-ar", "48000", out_path]
+
+
+def clean_frame(project: Project, edit_time: float, out_png: str, q: Quality = PREVIEW) -> str:
+    """One picture of the cut at ``edit_time``: the framed moment only, without
+    text, reactions or the logo (Place mode draws those itself)."""
+    from clipping.editor import timeline as TL
+    total = project.total_length
+    hit = TL.edit_to_source(project.segments, min(max(0.0, edit_time), max(0.0, total - 1e-3)))
+    if hit is None:
+        raise RenderError("The cut list is empty. Add at least one moment.")
+    index, src_time = hit
+    seg = project.segments[index]
+    src = project.source(seg.source_id)
+    if seg.reaction:
+        args = reactions.input_args(src.path, max(0.1, src_time + 0.05), q.fps)
+        seek = ["-ss", _num(max(0.0, src_time))]
+    else:
+        args = ["-ss", _num(src_time), "-i", src.path]
+        seek = []
+    one = Segment(source_id=seg.source_id, source_in=0.0, source_out=1.0, framing=seg.framing, id=seg.id)
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args,
+           "-filter_complex", video_filter(one, src, q, "[0:v]", "[v]"), "-map", "[v]", *seek,
+           "-frames:v", "1", out_png]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0 or not os.path.exists(out_png):
+        raise RenderError("Could not show that frame.\n" + proc.stderr[-300:])
+    return out_png
+
+
+def _tidy(folder: str, prefix: str, keep: set[str], limit: int) -> None:
+    """Delete old cache files, keeping ``keep`` and the newest ``limit``."""
+    try:
+        files = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith(prefix)]
+    except OSError:
+        return
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    for n, f in enumerate(files):
+        if f in keep or n < limit:
+            continue
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
+
+
+def make_pieces(project: Project, project_dir: str, on_progress=None, cancel=None, log=None) -> tuple[list[str], int]:
+    """Make (or reuse) every moment's piece. Returns (paths in cut order, how many were made now)."""
+    folder = os.path.join(project_dir, "Preview", "pieces")
+    os.makedirs(folder, exist_ok=True)
+    paths, todo = [], []
+    for seg in project.segments:
+        path = os.path.join(folder, f"piece-{piece_fingerprint(project, seg)}.mkv")
+        paths.append(path)
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            os.utime(path)          # recently used: keep it
+        elif path not in [t[1] for t in todo]:
+            todo.append((seg, path))
+    total = sum(seg.length for seg, _ in todo) or 1.0
+    shares = {path: 0.0 for _, path in todo}
+    lock = threading.Lock()
+
+    def one(seg, path):
+        tmp = path[:-4] + ".part.mkv"
+
+        def step(f):
+            with lock:
+                shares[path] = f * seg.length
+                if on_progress:
+                    on_progress(min(1.0, sum(shares.values()) / total))
+
+        run(piece_command(project, seg, tmp), seg.length, step, cancel, log)
+        os.replace(tmp, path)
+
+    # Two at a time: decoding a big video is partly single-threaded, so this
+    # uses the CPU better without starving the window.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=PIECE_WORKERS) as pool:
+        futures = [pool.submit(one, seg, path) for seg, path in todo]
+        errors = []
+        for fut in futures:
+            try:
+                fut.result()
+            except BaseException as err:   # keep the first problem, let the others stop
+                errors.append(err)
+                if cancel is not None:
+                    pass
+        if errors:
+            raise next((e for e in errors if isinstance(e, Cancelled)), errors[0])
+    _tidy(folder, "piece-", set(paths), KEEP_PIECES)
+    if on_progress:
+        on_progress(1.0)
+    return paths, len(todo)
+
+
+def join_pieces(pieces: list[str], out_path: str) -> None:
+    """Join the pieces into one file without re-encoding (they are made alike)."""
+    lst = out_path + ".txt"
+    with open(lst, "w", encoding="utf-8") as f:
+        for p in pieces:
+            f.write("file '" + p.replace("'", "'\\''") + "'\n")
+    try:
+        proc = subprocess.run(["ffmpeg", "-hide_banner", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                               "-i", lst, "-c", "copy", out_path], capture_output=True, text=True)
+    finally:
+        try:
+            os.unlink(lst)
+        except OSError:
+            pass
+    if proc.returncode != 0:
+        raise RenderError("The preview pieces could not be joined.\n" + proc.stderr[-400:])
+
+
 def make_preview(project: Project, project_dir: str, on_progress=None, cancel=None, log=None,
-                 fonts=None) -> str:
-    """A small, fast copy of the whole edit for watching. Cached."""
+                 fonts=None, timings: dict | None = None) -> str:
+    """A small, fast copy of the whole edit for watching (phase A: built from
+    cached moments, see above). ``timings`` gets how long each step took, in seconds."""
     folder = os.path.join(project_dir, "Preview")
     os.makedirs(folder, exist_ok=True)
     voices = _voices(project, project_dir)   # phase 3
     out = os.path.join(folder, f"preview-{edit_fingerprint(project, PREVIEW, voices)}.mp4")
+    timings = timings if timings is not None else {}
     if os.path.exists(out) and os.path.getsize(out) > 0:
         if on_progress:
             on_progress(1.0)
+        timings["cached"] = True
         return out
+
+    def part(lo, hi):
+        return (lambda f: on_progress(lo + (hi - lo) * f)) if on_progress else None
+
+    t0 = time.monotonic()
+    pieces, made = make_pieces(project, project_dir, part(0.0, 0.5), cancel, log)
+    timings["pieces"], timings["pieces_made"] = round(time.monotonic() - t0, 2), made
+    key = hashlib.sha1("|".join(os.path.basename(p) for p in pieces).encode()).hexdigest()[:16]
+    joined = os.path.join(folder, f"joined-{key}.mkv")
+    t1 = time.monotonic()
+    if not (os.path.exists(joined) and os.path.getsize(joined) > 0):
+        join_pieces(pieces, joined + ".part.mkv")
+        os.replace(joined + ".part.mkv", joined)
+    else:
+        os.utime(joined)
+    timings["join"] = round(time.monotonic() - t1, 2)
+    tmp = out + ".part.mp4"
+    t2 = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
+        layers = text_layers_for(project, PREVIEW, work, fonts, log)
+        visuals = visual_layers_for(project, PREVIEW, work, log)
+        run(build_command(project, tmp, PREVIEW, layers, visuals, voices, joined=joined),
+            project.total_length, part(0.5, 1.0), cancel, log)
+    timings["final"] = round(time.monotonic() - t2, 2)
     for old in os.listdir(folder):  # keep the folder small
-        if old.startswith("preview-") and old.endswith(".mp4"):
+        if old.startswith("preview-") and old.endswith(".mp4") and os.path.join(folder, old) != tmp:
             try:
                 os.unlink(os.path.join(folder, old))
             except OSError:
                 pass
-    tmp = out + ".part.mp4"
-    with tempfile.TemporaryDirectory(prefix="clipedit_") as work:
-        layers = text_layers_for(project, PREVIEW, work, fonts, log)
-        visuals = visual_layers_for(project, PREVIEW, work, log)
-        run(build_command(project, tmp, PREVIEW, layers, visuals, voices), project.total_length,
-            on_progress, cancel, log)
     os.replace(tmp, out)
+    _tidy(folder, "joined-", {joined}, 3)
     return out
 
 
